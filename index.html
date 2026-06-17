@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kurikulum OBE FEBI UINSI Samarinda | LAMEMBA 2026</title>
+    <title>Dashboard OBE FEBI UINSI Samarinda | LAMEMBA 2026</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -924,7 +924,7 @@
             <div class="logo-text">
                 <span class="uni">UINSI Samarinda</span>
                 <span class="febi">FEBI</span>
-                <span class="obe">KURIKULUM OBE</span>
+                <span class="obe">OBE Dashboard</span>
             </div>
         </div>
         <nav class="sidebar-nav">
@@ -1012,6 +1012,10 @@
     <div class="toast-container" id="toastContainer"></div>
 
     <script>
+
+
+
+
 
         (function() {
             'use strict';
@@ -1176,20 +1180,129 @@
             function arWeights(p) { let n = 0; p.courses.forEach(c => { const A = c.asesmen || []; if (!A.length) return; let sum = A.reduce((s, a) => s + (Number(a.bobot) || 0), 0); if (Math.round(sum) === 100) return; if (sum <= 0) { const e = Math.round(100 / A.length); A.forEach((a, i) => a.bobot = i === A.length - 1 ? 100 - e * (A.length - 1) : e); } else { let acc = 0; A.forEach((a, i) => { if (i === A.length - 1) a.bobot = 100 - acc; else { a.bobot = Math.round((Number(a.bobot) || 0) / sum * 100); acc += a.bobot; } }); } n++; }); return n; }
             function autoRepairAll(p) { let n = 0; n += arVertical(p); n += arFillAssess(p); n += arAlignBloom(p); n += arWeights(p); return n; }
             // ---- laporan & excel ----
+            function soalReportHTML(p) {
+                const rows = [];
+                p.courses.forEach(c => ['UTS', 'UAS'].forEach(u => { const items = (c.soal && c.soal[u]) || []; if (!items.length) return; const an = analyzeExam(c, u); const miss = an.missing.map(ki => (c.cpmk[ki] || {}).kode || '?').join(', ') || '—'; const sc = an.score >= 80 ? '#065f46' : an.score >= 60 ? '#92600e' : '#9a3412'; rows.push('<tr><td>' + esc(c.kode) + '</td><td style="text-align:center;">' + u + '</td><td style="text-align:center;">' + items.length + '</td><td style="text-align:center;">' + an.covered.length + '/' + an.target.length + '</td><td style="text-align:center;">' + an.alignedCount + '/' + items.length + '</td><td style="text-align:center;color:' + sc + ';font-weight:700;">' + an.score + '%</td><td>' + miss + '</td></tr>'); }));
+                const head = '<h2 style="color:#0f4d32;border-bottom:2px solid #0f4d32;padding-bottom:4px;">Status Keselarasan Soal UTS/UAS per Mata Kuliah</h2>';
+                if (!rows.length) return head + '<p style="font-size:.85rem;">Belum ada materi/soal UTS/UAS yang diinput untuk dianalisis pada dashboard.</p>';
+                return head + '<p style="font-size:.85rem;">Hasil deteksi otomatis level Bloom &amp; pemetaan CPMK atas butir soal yang diinput, dinilai terhadap kisi-kisi (cakupan CPMK target &amp; keselarasan kognitif butir).</p><table><thead><tr><th>Kode</th><th style="text-align:center;">Ujian</th><th style="text-align:center;">∑Butir</th><th style="text-align:center;">CPMK Tercakup</th><th style="text-align:center;">Butir Selaras</th><th style="text-align:center;">Skor</th><th>CPMK Belum Tersoal</th></tr></thead><tbody>' + rows.join('') + '</tbody></table>';
+            }
+            function soalAoaRows(p) {
+                const out = [['', ''], ['Status Keselarasan Soal UTS/UAS', ''], ['Kode MK', 'Ujian', 'Jml Butir', 'CPMK Tercakup', 'Butir Selaras', 'Skor(%)', 'CPMK Belum Tersoal']];
+                let any = false;
+                p.courses.forEach(c => ['UTS', 'UAS'].forEach(u => { const items = (c.soal && c.soal[u]) || []; if (!items.length) return; any = true; const an = analyzeExam(c, u); const miss = an.missing.map(ki => (c.cpmk[ki] || {}).kode || '?').join(', ') || '-'; out.push([c.kode, u, items.length, an.covered.length + '/' + an.target.length, an.alignedCount + '/' + items.length, an.score, miss]); }));
+                if (!any) out.push(['—', '—', '—', '—', '—', '—', 'Belum ada soal diinput']);
+                return out;
+            }
             function alignReportHTML(p) {
                 const V = alignVertical(p), H = alignHorizontal(p), g = alignGaps(p);
                 const rows = p.courses.map(c => { const sum = (c.asesmen || []).reduce((s, a) => s + (Number(a.bobot) || 0), 0); const al = (c.cpmk || []).filter((_, ki) => cpmkAligned(c, ki)).length; return '<tr><td>' + esc(c.kode) + '</td><td>' + esc(c.nama) + '</td><td style="text-align:center;">' + (c.cpmk || []).length + '</td><td style="text-align:center;">' + (c.cpmk || []).map(m => BLOOM_SHORT[m.bloom]).join(', ') + '</td><td>' + (c.asesmen || []).map(a => a.jenis + ' ' + a.bobot + '%').join('; ') + '</td><td style="text-align:center;">' + Math.round(sum) + '%</td><td style="text-align:center;">' + al + '/' + (c.cpmk || []).length + '</td></tr>'; }).join('');
                 return '<h2 style="color:#0f4d32;border-bottom:2px solid #0f4d32;padding-bottom:4px;">Keselarasan Konstruktif (Constructive Alignment, Biggs 1996)</h2>' +
                 '<p style="font-size:.85rem;">Keselarasan vertikal (VMTS → Profil Lulusan → CPL → CPMK → Metode &amp; Asesmen → Butir Soal) dan konsistensi horizontal antar mata kuliah. <b>Indeks keselarasan vertikal: ' + V.score + '%</b>; <b>konsistensi horizontal: ' + H.score + '%</b>. Bobot asesmen seimbang pada ' + H.balanced + '/' + H.withAss + ' MK; ' + H.bloomOk + '/' + H.cpmkTot + ' CPMK selaras taksonomi Bloom; cakupan ujian ' + H.examCovered + '/' + H.examCourses + ' MK.</p>' +
                 (g.length ? '<p style="font-size:.82rem;color:#9a3412;"><b>' + g.length + ' temuan</b> ketidakselarasan terdeteksi dan dapat diperbaiki otomatis melalui dashboard.</p>' : '<p style="font-size:.82rem;color:#065f46;"><b>Tidak ada temuan ketidakselarasan.</b></p>') +
-                '<table><thead><tr><th>Kode</th><th>Mata Kuliah</th><th style="text-align:center;">CPMK</th><th style="text-align:center;">Bloom</th><th>Metode Asesmen</th><th style="text-align:center;">Σ Bobot</th><th style="text-align:center;">Selaras</th></tr></thead><tbody>' + rows + '</tbody></table>';
+                '<table><thead><tr><th>Kode</th><th>Mata Kuliah</th><th style="text-align:center;">CPMK</th><th style="text-align:center;">Bloom</th><th>Metode Asesmen</th><th style="text-align:center;">Σ Bobot</th><th style="text-align:center;">Selaras</th></tr></thead><tbody>' + rows + '</tbody></table>' + soalReportHTML(p);
             }
             function alignAoa(p) {
                 const V = alignVertical(p), H = alignHorizontal(p);
                 const aoa = [['Keselarasan Konstruktif — ' + p.nama, ''], ['Indeks Vertikal (%)', V.score], ['Indeks Horizontal (%)', H.score], ['Bobot seimbang (MK)', H.balanced + '/' + H.withAss], ['CPMK selaras Bloom', H.bloomOk + '/' + H.cpmkTot], ['Cakupan ujian (MK)', H.examCovered + '/' + H.examCourses], ['', ''], ['Kode MK', 'CPMK', 'Bloom', 'CPL', 'Metode Asesmen (bobot)', 'Σ', 'Selaras?']];
                 p.courses.forEach(c => (c.cpmk || []).forEach((m, ki) => { const sum = (c.asesmen || []).reduce((s, a) => s + (Number(a.bobot) || 0), 0); aoa.push([c.kode, m.kode + ': ' + m.deskripsi, BLOOM_SHORT[m.bloom], (p.cpl[m.cplIdx] || {}).id || '-', (c.asesmen || []).filter(a => (a.cpmk || []).indexOf(ki) >= 0).map(a => a.jenis + ' ' + a.bobot + '%').join('; '), Math.round(sum), cpmkAligned(c, ki) ? 'Ya' : 'Tidak']); }));
+                soalAoaRows(p).forEach(r => aoa.push(r));
                 return aoa;
             }
+
+            // ===== MESIN DERIVASI OTOMATIS (numbers from data) =====
+            const DIM_INDIK = {
+                'Tata Pamong': ['Struktur organisasi & tupoksi terdokumentasi', 'Renstra & Renop tersedia dan terlaksana', 'Kepemimpinan operasional, organisasi & publik terbukti', 'Sistem tata pamong kredibel, transparan & akuntabel', 'Praktik baik tata pamong terdokumentasi'],
+                'Tata Kelola': ['Dokumen SPMI lengkap (kebijakan/manual/standar/SOP)', 'Siklus PPEPP berjalan', 'Audit Mutu Internal (AMI) rutin', 'Tindak lanjut hasil audit terdokumentasi', 'Sertifikasi/penjaminan mutu eksternal'],
+                'Kecukupan & Kualifikasi Dosen': ['Rasio dosen:mahasiswa sesuai standar', 'Minimal 5 dosen tetap sesuai bidang (DTPS)', 'Kualifikasi S3 / jabatan akademik memadai', 'Sertifikasi pendidik (Serdos)', 'Sebaran keahlian sesuai kurikulum'],
+                'Pengelolaan Dosen': ['Rencana rekrutmen & pengembangan dosen', 'Beban Kerja Dosen (BKD) terdokumentasi', 'Pengembangan karier & studi lanjut', 'Evaluasi kinerja dosen berkala', 'Sistem penghargaan & pembinaan'],
+                'Kecukupan & Kualifikasi Tenaga Kependidikan': ['Jumlah tenaga kependidikan memadai', 'Kualifikasi tendik sesuai layanan', 'Pustakawan/laboran/teknisi tersedia', 'Sertifikasi kompetensi tendik'],
+                'Pengelolaan Tenaga Kependidikan': ['Rencana pengembangan tendik', 'Evaluasi kinerja tendik berkala', 'Pelatihan peningkatan kompetensi', 'Sistem layanan terdokumentasi'],
+                'Keuangan': ['RKAT tersusun & realisasi terlaporkan', 'Dana operasional per mahasiswa sesuai standar', 'Laporan keuangan 3 tahun auditable', 'Dana penelitian & PkM memadai', 'Keberlanjutan sumber pendanaan'],
+                'Sarana dan Prasarana': ['Ruang kuliah & laboratorium memadai', 'Sistem informasi & TIK mendukung', 'Perpustakaan & e-resources memadai', 'Aksesibilitas & keselamatan terpenuhi', 'Rencana pengembangan sarpras'],
+                'Jaminan Pembelajaran': ['Monitoring pelaksanaan pembelajaran', 'Pengukuran ketercapaian CPL terdokumentasi', 'Umpan balik & evaluasi pembelajaran', 'Tindak lanjut perbaikan (closing the loop)', 'Kepuasan mahasiswa terukur'],
+                'Penelitian': ['Roadmap penelitian selaras keilmuan', 'Luaran penelitian dosen (publikasi)', 'Pelibatan mahasiswa dalam penelitian', 'Integrasi hasil riset ke pembelajaran', 'Rekognisi/sitasi karya'],
+                'Pengabdian kepada Masyarakat': ['Roadmap PkM tersedia', 'Pelaksanaan PkM dosen & mahasiswa', 'Luaran & dampak PkM terdokumentasi', 'Integrasi PkM ke pembelajaran', 'Kerja sama mitra PkM']
+            };
+            const SCL_MAP = { 'Studi Kasus': 'Case Method', 'Proyek': 'Project/Problem-Based Learning', 'Presentasi': 'Presentasi & Diskusi', 'Praktik/Unjuk Kerja': 'Praktikum/Studio', 'Laporan': 'Praktikum/Studio', 'Tugas': 'Penugasan Terstruktur', 'Partisipasi': 'Diskusi Kolaboratif', 'Bimbingan/Proses': 'Bimbingan/Mentoring', 'Portofolio': 'Portofolio' };
+            function normData(p) {
+                p.criteria.forEach(c => c.dimensi.forEach(d => { if (d.nama === 'Kurikulum') return; if (!Array.isArray(d.indikator) || !d.indikator.length) { const tpl = DIM_INDIK[d.nama] || ['Dokumen bukti tersedia', 'Pelaksanaan terdokumentasi', 'Evaluasi & tindak lanjut terdokumentasi']; const n = tpl.length; const okN = Math.round((Number(d.kesiapan) || 75) / 100 * n); d.indikator = tpl.map((t, i) => ({ teks: t, terpenuhi: i < okN, bobot: 1 })); } }));
+                const base = p.cpl.length ? p.cpl.reduce((a, c) => a + (Number(c.capaian) || 0), 0) / p.cpl.length : 80;
+                p.students.forEach(s => { if (!Array.isArray(s.nilai) || s.nilai.length !== p.cpl.length) { const delta = (Number(s.cplAvg) || base) - base; s.nilai = p.cpl.map(c => Math.max(40, Math.min(100, Math.round((Number(c.capaian) || base) + delta)))); } if (!isFinite(Number(s.nilaiLalu))) s.nilaiLalu = Math.max(40, Math.min(100, Math.round((Number(s.cplAvg) || base) - 2))); });
+                return p;
+            }
+            function recalcCPL(p) { p.cpl.forEach((c, j) => { const st = p.students.filter(s => Array.isArray(s.nilai) && s.nilai.length > j && isFinite(Number(s.nilai[j]))); if (st.length) c.capaian = Math.round(st.reduce((a, s) => a + (Number(s.nilai[j]) || 0), 0) / st.length); }); }
+            function stuAvgCalc(s) { return (Array.isArray(s.nilai) && s.nilai.length) ? Math.round(s.nilai.reduce((a, x) => a + (Number(x) || 0), 0) / s.nilai.length * 10) / 10 : (Number(s.cplAvg) || 0); }
+            function recalcStudents(p) { p.students.forEach(s => { s.cplAvg = stuAvgCalc(s); s.status = s.cplAvg >= 85 ? 'Excellent' : s.cplAvg >= 75 ? 'On Track' : 'Perlu Perhatian'; const prev = Number(s.nilaiLalu); s.trend = !isFinite(prev) ? '→' : (s.cplAvg > prev + 0.5 ? '↑' : s.cplAvg < prev - 0.5 ? '↓' : '→'); }); }
+            function dimKesIndikator(d) { if (!Array.isArray(d.indikator) || !d.indikator.length) return null; const tot = d.indikator.reduce((s, x) => s + (Number(x.bobot) || 1), 0); const ok = d.indikator.reduce((s, x) => s + (x.terpenuhi ? (Number(x.bobot) || 1) : 0), 0); return Math.round(ok / (tot || 1) * 100); }
+            function recalcDims(p) { p.criteria.forEach(c => c.dimensi.forEach(d => { if (d.nama === 'Kurikulum') return; const v = dimKesIndikator(d); if (v !== null) d.kesiapan = v; })); if (typeof syncKur === 'function') syncKur(p); }
+            function recalcSCL(p) { if (!p.kurikulum || !p.kurikulum.implementasi) return; const acc = {}; p.courses.forEach(c => (c.asesmen || []).forEach(a => { const lbl = SCL_MAP[a.jenis]; if (lbl) acc[lbl] = (acc[lbl] || 0) + 1; })); const labels = Object.keys(acc); if (!labels.length) return; const tot = labels.reduce((s, l) => s + acc[l], 0); let arr = labels.map(l => ({ nama: l, persen: Math.round(acc[l] / tot * 100) })); arr.sort((a, b) => b.persen - a.persen); const sum = arr.reduce((s, x) => s + x.persen, 0); if (arr.length) arr[0].persen += (100 - sum); p.kurikulum.implementasi.scl = arr; }
+            function recalcAll(p) { if (!p) return; recalcCPL(p); recalcStudents(p); recalcSCL(p); recalcDims(p); }
+            window.setIndikator = function(ci, di, ii) { const d = P().criteria[ci].dimensi[di]; if (d.indikator && d.indikator[ii]) d.indikator[ii].terpenuhi = !d.indikator[ii].terpenuhi; recalcDims(P()); persist(); destroyAllCharts(); renderAccreditation(); };
+
+            // ===== DETEKSI & ANALISIS MATERI SOAL UTS/UAS =====
+            const BLOOM_KW = [null,
+                ['sebutkan', 'tuliskan', 'definisikan', 'identifikasi', 'sebut', 'daftar', 'nyatakan', 'kapan', 'siapa', 'label', 'hafalkan', 'jodohkan', 'apa yang dimaksud'],
+                ['jelaskan', 'uraikan', 'ringkas', 'klasifikasikan', 'berikan contoh', 'deskripsikan', 'terangkan', 'rangkum', 'interpretasi', 'jabarkan'],
+                ['hitung', 'terapkan', 'gunakan', 'tentukan', 'selesaikan', 'demonstrasikan', 'implementasikan', 'aplikasikan', 'operasikan', 'hitunglah', 'buat perhitungan', 'praktikkan'],
+                ['analisis', 'analisislah', 'bandingkan', 'periksa', 'telaah', 'korelasikan', 'kategorikan', 'diferensiasi', 'uraikan faktor', 'identifikasi penyebab', 'bedah'],
+                ['evaluasi', 'kritik', 'pertimbangkan', 'rekomendasikan', 'justifikasi', 'putuskan', 'simpulkan', 'argumentasikan', 'tinjau kritis', 'beri penilaian', 'nilailah'],
+                ['rancang', 'ciptakan', 'susun', 'kembangkan', 'formulasikan', 'desain', 'rumuskan strategi', 'hasilkan', 'bangun model', 'buatlah model', 'rancanglah']];
+            function detectBloom(teks) { const t = ' ' + String(teks || '').toLowerCase() + ' '; for (let b = 6; b >= 1; b--) { if (BLOOM_KW[b].some(k => t.indexOf(k) >= 0)) return b; } return 2; }
+            const SOAL_STOP = new Set(['yang', 'dan', 'atau', 'pada', 'dari', 'untuk', 'dengan', 'dalam', 'adalah', 'akan', 'dapat', 'suatu', 'sebuah', 'jelaskan', 'sebutkan', 'analisis', 'hitung', 'apa', 'bagaimana', 'mengapa', 'tersebut', 'secara', 'oleh', 'itu', 'ini', 'serta', 'agar', 'jika', 'maka', 'tentang']);
+            function soalTok(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w.length > 3 && !SOAL_STOP.has(w)); }
+            function suggestCPMK(teks, c) { if (!c.cpmk || !c.cpmk.length) return -1; const tt = soalTok(teks); let best = 0, bi = 0; c.cpmk.forEach((m, ki) => { const cpl = P().cpl[m.cplIdx] || {}; const base = new Set(soalTok((m.deskripsi || '') + ' ' + (cpl.nama || '') + ' ' + (cpl.id || ''))); let sc = 0; tt.forEach(w => { if (base.has(w)) sc++; }); if (sc > best) { best = sc; bi = ki; } }); return bi; }
+            function parseSoal(text) { return String(text || '').split(/\r?\n/).map(s => s.replace(/^\s*(?:soal\s*)?\d+[\.\)\:\-]?\s*/i, '').trim()).filter(s => s.length > 3); }
+            function ensureSoal(p) { (p.courses || []).forEach(c => { if (!c.soal || typeof c.soal !== 'object') c.soal = { UTS: [], UAS: [] }; ['UTS', 'UAS'].forEach(u => { if (!Array.isArray(c.soal[u])) c.soal[u] = []; c.soal[u].forEach(it => { it.bloom = Math.min(6, Math.max(1, Number(it.bloom) || 2)); if (typeof it.cpmk !== 'number') it.cpmk = -1; if (it.cpmk >= (c.cpmk || []).length) it.cpmk = -1; }); }); }); return p; }
+            function analyzeExam(c, ujian) { const target = []; (c.asesmen || []).forEach(a => { if (a.ujian === ujian) (a.cpmk || []).forEach(ki => { if (target.indexOf(ki) < 0) target.push(ki); }); }); const items = (c.soal && c.soal[ujian]) || []; let aligned = 0; const cov = {}; items.forEach(it => { const m = it.cpmk >= 0 ? c.cpmk[it.cpmk] : null; if (m) { cov[it.cpmk] = 1; if (it.bloom >= m.bloom - 1) aligned++; } }); const covered = Object.keys(cov).map(Number).filter(ki => target.indexOf(ki) >= 0); const missing = target.filter(ki => !cov[ki]); const covRatio = target.length ? covered.length / target.length : 1; const alnRatio = items.length ? aligned / items.length : 0; const score = items.length ? Math.round((covRatio * 0.5 + alnRatio * 0.5) * 100) : 0; return { target, items, covered, missing, score, alignedCount: aligned }; }
+            function autoFixExam(c, ujian) { let n = 0; const items = c.soal[ujian] = c.soal[ujian] || []; items.forEach(it => { if (it.cpmk < 0 || it.cpmk >= c.cpmk.length) { it.cpmk = suggestCPMK(it.teks, c); if (it.cpmk >= 0) n++; } if (it.sumberBloom !== 'manual') { const b = detectBloom(it.teks); if (b !== it.bloom) { it.bloom = b; n++; } } }); const an = analyzeExam(c, ujian); an.missing.forEach(ki => { const m = c.cpmk[ki]; if (!m) return; items.push({ teks: '[Perlu disusun] ' + kisiBentuk(m.bloom) + ' untuk ' + m.kode + ': ' + m.deskripsi, cpmk: ki, bloom: m.bloom, sumberBloom: 'auto', generated: true }); n++; }); return n; }
+            function soalSectionHTML(c, ci) {
+                function examBlock(ujian) {
+                    const an = analyzeExam(c, ujian); const items = c.soal[ujian] || []; const vc = an.score >= 80 ? 'st-ok' : an.score >= 60 ? 'st-warn' : 'st-bad';
+                    const rows = items.map((it, i) => { const m = it.cpmk >= 0 ? c.cpmk[it.cpmk] : null; let issue, scls; if (it.cpmk < 0 || !m) { issue = 'Belum dipetakan ke CPMK'; scls = 'st-bad'; } else if (it.bloom < m.bloom - 1) { issue = 'Bloom terlalu rendah (CPMK ' + BLOOM_SHORT[m.bloom] + ')'; scls = 'st-warn'; } else { issue = 'Selaras'; scls = 'st-ok'; } const txt = (it.teks || ''); return '<tr><td style="text-align:center;">' + (i + 1) + '</td><td style="font-size:.74rem;">' + esc(txt.slice(0, 90)) + (txt.length > 90 ? '…' : '') + (it.generated ? ' <span style="color:#c8963e;font-weight:700;">[stub]</span>' : '') + '</td>' + '<td><select class="inline-input" onchange="window.setSoal(' + ci + ',\'' + ujian + '\',' + i + ',\'cpmk\',this.value,true)"><option value="-1" ' + (it.cpmk < 0 ? 'selected' : '') + '>— belum</option>' + c.cpmk.map((mm, ki) => '<option value="' + ki + '" ' + (ki === it.cpmk ? 'selected' : '') + '>' + esc(mm.kode) + '</option>').join('') + '</select></td>' + '<td><select class="inline-input" onchange="window.setSoal(' + ci + ',\'' + ujian + '\',' + i + ',\'bloom\',this.value,true)">' + [1, 2, 3, 4, 5, 6].map(b => '<option value="' + b + '" ' + (b === it.bloom ? 'selected' : '') + '>' + BLOOM_SHORT[b] + '</option>').join('') + '</select></td>' + '<td><span class="dim-status ' + scls + '" style="font-size:.64rem;">' + issue + '</span></td>' + '<td><button class="icon-btn del" onclick="window.delSoal(' + ci + ',\'' + ujian + '\',' + i + ')"><i class="fa-solid fa-trash"></i></button></td></tr>'; }).join('');
+                    const missTxt = an.missing.length ? an.missing.map(ki => (c.cpmk[ki] || {}).kode || '?').join(', ') : '';
+                    return '<div style="border:1px solid var(--border-color);border-radius:10px;padding:10px;margin-bottom:8px;">' +
+                        '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;"><b style="font-size:.84rem;">📄 Soal ' + ujian + '</b><span class="dim-status ' + vc + '" style="font-size:.68rem;">Keselarasan ' + an.score + '% • ' + an.covered.length + '/' + an.target.length + ' CPMK tercakup • ' + an.alignedCount + '/' + items.length + ' butir selaras</span></div>' +
+                        '<textarea id="soalIn-' + ci + '-' + ujian + '" placeholder="Tempel materi/soal ' + ujian + ' di sini — satu butir per baris (penomoran otomatis dirapikan)…" style="width:100%;min-height:60px;margin-top:6px;font-size:.78rem;font-family:inherit;"></textarea>' +
+                        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0;"><button class="btn btn-primary" onclick="window.soalDetect(' + ci + ',\'' + ujian + '\')"><i class="fa-solid fa-wand-magic-sparkles"></i> Deteksi & Analisis</button>' +
+                        '<label class="btn btn-ghost" style="margin:0;"><i class="fa-solid fa-upload"></i> Unggah .txt<input type="file" accept=".txt,.text" class="hidden" onchange="window.soalUpload(' + ci + ',\'' + ujian + '\',this)"></label>' +
+                        '<button class="btn btn-ghost" onclick="window.soalAutoFix(' + ci + ',\'' + ujian + '\')"><i class="fa-solid fa-screwdriver-wrench"></i> Perbaiki Otomatis</button>' +
+                        (items.length ? '<button class="btn btn-ghost" onclick="window.soalClear(' + ci + ',\'' + ujian + '\')"><i class="fa-solid fa-eraser"></i> Bersihkan</button>' : '') + '</div>' +
+                        (an.missing.length ? '<div style="font-size:.74rem;color:#9a3412;margin-bottom:4px;"><i class="fa-solid fa-triangle-exclamation"></i> CPMK target ' + ujian + ' belum tercakup soal: <b>' + missTxt + '</b></div>' : '') +
+                        (items.length ? '<div class="matrix-table-wrap"><table class="matrix-table"><thead><tr><th style="width:34px;">No</th><th>Cuplikan Butir Soal</th><th style="width:100px;">CPMK</th><th style="width:66px;">Bloom</th><th>Status Keselarasan</th><th style="width:38px;"></th></tr></thead><tbody>' + rows + '</tbody></table></div>' : '<div style="font-size:.76rem;color:var(--text-muted);">Belum ada soal ' + ujian + ' yang diinput/diunggah.</div>') +
+                        '</div>';
+                }
+                return '<div class="data-card-head" style="margin:12px 0 4px;"><h3 style="font-size:.85rem;"><i class="fa-solid fa-file-circle-check"></i> Deteksi & Analisis Materi Soal UTS/UAS</h3><div style="display:flex;gap:6px;"><button class="btn btn-ghost" onclick="window.exportNaskahWord(' + ci + ')"><i class="fa-solid fa-file-word"></i> Naskah Word</button><button class="btn btn-ghost" onclick="window.printNaskah(' + ci + ')"><i class="fa-solid fa-print"></i> Naskah PDF</button></div></div>' +
+                    '<div style="font-size:.74rem;color:var(--text-muted);margin-bottom:6px;line-height:1.5;">Tempel atau unggah soal; sistem mendeteksi <b>level Bloom</b> (dari kata kerja operasional) dan memetakan ke <b>CPMK</b>, lalu menilai keselarasan terhadap kisi-kisi. <b>Perbaiki Otomatis</b> memetakan butir tak terpetakan, menyetel Bloom terdeteksi, dan melengkapi CPMK target yang belum tersoal (stub).</div>' +
+                    examBlock('UTS') + examBlock('UAS');
+            }
+            function soalIngest(ci, ujian, text) { const c = P().courses[ci]; const lines = parseSoal(text); if (!lines.length) { window.showToast('⚠️ Tidak ada butir soal terbaca', 'error'); return; } c.soal[ujian] = c.soal[ujian] || []; lines.forEach(t => c.soal[ujian].push({ teks: t, cpmk: suggestCPMK(t, c), bloom: detectBloom(t), sumberBloom: 'auto' })); persist(); destroyAllCharts(); renderAlignment(); const an = analyzeExam(c, ujian); window.showToast('🔎 ' + lines.length + ' butir ' + ujian + ' dianalisis — keselarasan ' + an.score + '%', 'success'); }
+            window.soalDetect = function(ci, ujian) { const el = document.getElementById('soalIn-' + ci + '-' + ujian); soalIngest(ci, ujian, el ? el.value : ''); };
+            window.soalUpload = function(ci, ujian, input) { const fl = input.files[0]; if (!fl) return; const r = new FileReader(); r.onload = () => { soalIngest(ci, ujian, r.result); }; r.readAsText(fl); input.value = ''; };
+            window.setSoal = function(ci, ujian, i, field, val, num) { const it = P().courses[ci].soal[ujian][i]; if (!it) return; if (field === 'bloom') { it.bloom = Math.min(6, Math.max(1, Number(val) || 2)); it.sumberBloom = 'manual'; } else if (field === 'cpmk') { it.cpmk = Number(val); } else it[field] = val; persist(); destroyAllCharts(); renderAlignment(); };
+            window.delSoal = function(ci, ujian, i) { P().courses[ci].soal[ujian].splice(i, 1); persist(); destroyAllCharts(); renderAlignment(); };
+            window.soalClear = function(ci, ujian) { P().courses[ci].soal[ujian] = []; persist(); destroyAllCharts(); renderAlignment(); };
+            window.soalAutoFix = function(ci, ujian) { const n = autoFixExam(P().courses[ci], ujian); persist(); destroyAllCharts(); renderAlignment(); const an = analyzeExam(P().courses[ci], ujian); window.showToast(n ? ('✨ ' + n + ' perbaikan diterapkan — keselarasan ' + an.score + '%') : '✓ Soal ' + ujian + ' sudah selaras', 'success'); };
+
+            // ===== LAMPIRAN NASKAH SOAL per MK (butir ↔ CPMK ↔ Bloom) =====
+            function naskahSoalDocHTML(c) {
+                const m = M(), now = new Date();
+                const ident = kisiIdent(c).map(r => '<tr><th style="width:32%;">' + r[0] + '</th><td>' + esc(r[1]) + '</td></tr>').join('');
+                function sec(ujian, label) {
+                    const items = (c.soal && c.soal[ujian]) || []; const an = analyzeExam(c, ujian);
+                    const head = '<h3 style="color:#0f4d32;margin-top:16px;">' + label + ' <span style="font-weight:400;font-size:.8rem;">— keselarasan ' + an.score + '%, ' + an.covered.length + '/' + an.target.length + ' CPMK tercakup</span></h3>';
+                    if (!items.length) return head + '<p style="font-size:.9rem;color:#666;">Belum ada butir soal ' + ujian + ' yang diinput.</p>';
+                    const li = items.map((it, i) => { const mm = it.cpmk >= 0 ? c.cpmk[it.cpmk] : null; const cpl = mm ? (P().cpl[mm.cplIdx] || {}) : {}; const tag = mm ? (mm.kode + ' · ' + (cpl.id || '-') + ' · Bloom ' + BLOOM_SHORT[it.bloom] + ' · ' + kisiBentuk(it.bloom)) : ('Belum dipetakan ke CPMK · Bloom ' + BLOOM_SHORT[it.bloom]); return '<li style="margin-bottom:9px;">' + esc(it.teks) + (it.generated ? ' <i style="color:#b45309;">(perlu disusun)</i>' : '') + '<br><span style="font-size:.74rem;color:#0f4d32;font-weight:700;">[' + tag + ']</span></li>'; }).join('');
+                    return head + '<ol style="font-size:.92rem;line-height:1.55;padding-left:20px;">' + li + '</ol>';
+                }
+                return '<div style="text-align:center;margin-bottom:14px;"><div style="font-size:1.25rem;font-weight:800;color:#0f4d32;">NASKAH SOAL UJIAN</div><div style="font-size:1rem;font-weight:700;">' + esc(m.upps) + ' — ' + esc(m.pt) + '</div></div>' +
+                    '<table><tbody>' + ident + '</tbody></table>' +
+                    sec('UTS', 'A. Ujian Tengah Semester (UTS)') + sec('UAS', 'B. Ujian Akhir Semester (UAS)') +
+                    '<p style="font-size:.78rem;color:#555;margin-top:14px;border-top:1px dashed #bbb;padding-top:8px;">Keterangan: kode dalam kurung siku menunjukkan pemetaan tiap butir ke CPMK, CPL, level taksonomi Bloom, dan bentuk soal — hasil deteksi otomatis dashboard dan wajib diverifikasi dosen pengampu.</p>' +
+                    '<div style="margin-top:24px;display:flex;justify-content:space-between;font-size:.85rem;"><div>Memvalidasi,<br>Ketua Program Studi / GPM<br><br><br><br>(__________________________)<br>NIP.</div><div style="text-align:right;">' + esc(m.kota) + ', ' + now.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) + '<br>Dosen Pengampu<br><br><br><br>(__________________________)<br>NIP.</div></div>';
+            }
+            window.exportNaskahWord = function(ci) { const c = P().courses[ci]; const html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>Naskah Soal ' + esc(c.kode) + '</title><style>@page{size:A4;margin:2cm}body{font-family:Calibri,Arial,sans-serif;font-size:11pt;line-height:1.45}h3{font-size:12pt;color:#0f4d32}table{width:100%;border-collapse:collapse;margin:6px 0;font-size:10pt}th,td{border:1px solid #888;padding:4px 7px;text-align:left;vertical-align:top}</style></head><body>' + naskahSoalDocHTML(c) + '</body></html>'; dl(new Blob(['\ufeff' + html], { type: 'application/msword' }), 'Naskah-Soal-' + slug(c.kode) + '-' + slug(P().nama) + '.doc'); window.showToast('📝 Naskah soal ' + c.kode + ' (Word) diunduh', 'success'); };
+            window.printNaskah = function(ci) { const c = P().courses[ci]; const w = window.open('', '_blank'); if (!w) { window.showToast('⚠️ Izinkan pop-up', 'error'); return; } w.document.write('<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8"><title>Naskah Soal ' + esc(c.kode) + '</title><style>@page{size:A4}body{font-family:Calibri,Arial,sans-serif;margin:24px;font-size:12px;line-height:1.45}h3{color:#0f4d32}table{width:100%;border-collapse:collapse;margin:6px 0;font-size:11px}th,td{border:1px solid #999;padding:4px 7px;text-align:left;vertical-align:top}</style></head><body>' + naskahSoalDocHTML(c) + '</body></html>'); w.document.close(); setTimeout(() => { w.focus(); w.print(); }, 400); };
 
             function defaultStore() {
                 return {
@@ -1300,7 +1413,7 @@
             let STORE = loadStore();
             function loadStore() { try { const raw = localStorage.getItem(STORAGE_KEY); if (raw) return migrate(JSON.parse(raw)); } catch (e) {} return migrate(defaultStore()); }
             function persist() { try { STORE._savedAt = new Date().toISOString(); localStorage.setItem(STORAGE_KEY, JSON.stringify(STORE)); } catch (e) {} }
-            function normProdi(p, defp) { p = p || {}; ['cpl', 'courses', 'students', 'criteria'].forEach(k => { if (!Array.isArray(p[k])) p[k] = JSON.parse(JSON.stringify(defp[k])); }); p.id = p.id || 'p' + Math.random().toString(36).slice(2, 6); p.kode = p.kode || (p.nama || 'PS').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 4); p.nama = p.nama || 'Program Studi'; p.jenjang = p.jenjang || 'Sarjana (S1)'; ['mahasiswaAktif', 'targetKesiapan'].forEach(k => p[k] = Number(p[k]) || (k === 'targetKesiapan' ? 75 : 0)); p.akreditasiTerakhir = p.akreditasiTerakhir || '-'; p.skLam = p.skLam || '-'; p.kurikulum = normKur(p.kurikulum, p.kode, p.nama); normAlign(p); return p; }
+            function normProdi(p, defp) { p = p || {}; ['cpl', 'courses', 'students', 'criteria'].forEach(k => { if (!Array.isArray(p[k])) p[k] = JSON.parse(JSON.stringify(defp[k])); }); p.id = p.id || 'p' + Math.random().toString(36).slice(2, 6); p.kode = p.kode || (p.nama || 'PS').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 4); p.nama = p.nama || 'Program Studi'; p.jenjang = p.jenjang || 'Sarjana (S1)'; ['mahasiswaAktif', 'targetKesiapan'].forEach(k => p[k] = Number(p[k]) || (k === 'targetKesiapan' ? 75 : 0)); p.akreditasiTerakhir = p.akreditasiTerakhir || '-'; p.skLam = p.skLam || '-'; p.kurikulum = normKur(p.kurikulum, p.kode, p.nama); normAlign(p); normData(p); ensureSoal(p); return p; }
             function migrate(d) {
                 const def = defaultStore();
                 if (d && Array.isArray(d.prodi) && d.faculty) { d.faculty = Object.assign({}, def.faculty, d.faculty); d.active = Math.min(Number(d.active) || 0, d.prodi.length - 1); d.prodi = d.prodi.map(p => normProdi(p, def.prodi[0])); return d; }
@@ -1366,7 +1479,7 @@
             function openModal(html) { document.getElementById('modalBox').innerHTML = html; document.getElementById('modalOverlay').classList.add('show'); }
 
             // ===== DASHBOARD =====
-            function renderDashboard() {
+            function renderDashboard() { recalcAll(P());
                 const kpiData = getKPIData(); const ov = overallStatus();
                 dashboardContent.innerHTML =
                 '<div class="section-header"><div><h2 class="section-title">📊 Dashboard Utama OBE — ' + esc(P().nama) + '</h2><p class="section-subtitle">' + esc(F().upps) + ' • ' + esc(F().pt) + ' • LAMEMBA ' + F().tahun + '</p></div></div>' +
@@ -1420,7 +1533,7 @@
             }
 
             // ===== PENGELOLAAN KURIKULUM (Kriteria 4) =====
-            function renderCurriculum() {
+            function renderCurriculum() { recalcAll(P());
                 const p = P(), k = p.kurikulum, pc = petaConsistency(p), idx = kurIndex(p), idxSt = dimStatus(idx);
                 const sems = [...new Set(p.courses.map(c => c.sem))].sort((a, b) => a - b);
                 const acc = sems.map((sem, i2) => { const list = p.courses.filter(c => c.sem === sem); const sks = list.reduce((a, c) => a + (c.sks || 0), 0); return '<div class="accordion-item"><div class="accordion-header ' + (i2 === 0 ? 'active' : '') + '" onclick="toggleAccordion(this)"><span>📚 Semester ' + sem + ' — ' + list.length + ' MK (' + sks + ' SKS)</span><i class="fa-solid fa-chevron-down"></i></div><div class="accordion-body ' + (i2 === 0 ? 'open' : '') + '"><table><thead><tr><th>Kode</th><th>Mata Kuliah</th><th>SKS</th><th>Tipe</th><th>CPL Terkait</th></tr></thead><tbody>' + list.map(c => '<tr><td style="font-weight:600;">' + esc(c.kode) + '</td><td>' + esc(c.nama) + '</td><td>' + c.sks + '</td><td><span style="background:#ecfdf5;color:#065f46;padding:3px 10px;border-radius:10px;font-weight:600;font-size:0.75rem;">' + esc(c.tipe) + '</span></td><td>' + cplBadges(c) + '</td></tr>').join('') + '</tbody></table></div></div>'; }).join('');
@@ -1429,7 +1542,7 @@
                 const stat = (label, val, suf) => '<div style="flex:1;min-width:120px;background:var(--bg-main);border:1px solid var(--border-color);border-radius:10px;padding:10px 12px;"><div style="font-size:1.3rem;font-weight:800;color:var(--primary);">' + val + (suf || '') + '</div><div style="font-size:.72rem;color:var(--text-muted);">' + label + '</div></div>';
 
                 const plRows = k.profilLulusan.map((r, i) => '<tr><td><input class="inline-input" style="width:70px;" value="' + esc(r.kode) + '" onchange="window.kurSetRow(\'profilLulusan\',' + i + ',\'kode\',this.value)"></td><td><input class="inline-input wide" value="' + esc(r.nama) + '" onchange="window.kurSetRow(\'profilLulusan\',' + i + ',\'nama\',this.value)"></td><td><input class="inline-input wide" value="' + esc(r.deskripsi) + '" onchange="window.kurSetRow(\'profilLulusan\',' + i + ',\'deskripsi\',this.value)"></td><td><button class="icon-btn del" onclick="window.kurDelRow(\'profilLulusan\',' + i + ')"><i class="fa-solid fa-trash"></i></button></td></tr>').join('');
-                const sclRows = k.implementasi.scl.map((r, i) => '<tr><td><input class="inline-input wide" value="' + esc(r.nama) + '" onchange="window.kurSetRow(\'implementasi.scl\',' + i + ',\'nama\',this.value)"></td><td><input class="inline-input" type="number" min="0" max="100" value="' + r.persen + '" onchange="window.kurSetRow(\'implementasi.scl\',' + i + ',\'persen\',this.value,true)"></td><td><button class="icon-btn del" onclick="window.kurDelRow(\'implementasi.scl\',' + i + ')"><i class="fa-solid fa-trash"></i></button></td></tr>').join('');
+                const sclRows = k.implementasi.scl.map(r => '<tr><td>' + esc(r.nama) + '</td><td style="text-align:center;font-weight:700;color:#059669;">' + r.persen + '%</td></tr>').join('');
                 const pemRows = k.evaluasi.pemangku.map((r, i) => '<tr><td><input class="inline-input wide" value="' + esc(r.nama) + '" onchange="window.kurSetRow(\'evaluasi.pemangku\',' + i + ',\'nama\',this.value)"></td><td><input class="inline-input wide" value="' + esc(r.peran) + '" onchange="window.kurSetRow(\'evaluasi.pemangku\',' + i + ',\'peran\',this.value)"></td><td><input class="inline-input wide" value="' + esc(r.kontribusi) + '" onchange="window.kurSetRow(\'evaluasi.pemangku\',' + i + ',\'kontribusi\',this.value)"></td><td><button class="icon-btn del" onclick="window.kurDelRow(\'evaluasi.pemangku\',' + i + ')"><i class="fa-solid fa-trash"></i></button></td></tr>').join('');
                 const stOpt = v => ['Berjalan', 'Selesai', 'Rencana'].map(o => '<option ' + (o === v ? 'selected' : '') + '>' + o + '</option>').join('');
                 const cqiRows = k.evaluasi.cqi.map((r, i) => '<tr><td><input class="inline-input" style="width:64px;" type="number" value="' + r.tahun + '" onchange="window.kurSetRow(\'evaluasi.cqi\',' + i + ',\'tahun\',this.value,true)"></td><td><input class="inline-input wide" value="' + esc(r.temuan) + '" onchange="window.kurSetRow(\'evaluasi.cqi\',' + i + ',\'temuan\',this.value)"></td><td><input class="inline-input wide" value="' + esc(r.tindak) + '" onchange="window.kurSetRow(\'evaluasi.cqi\',' + i + ',\'tindak\',this.value)"></td><td><select class="inline-input" style="width:96px;" onchange="window.kurSetRow(\'evaluasi.cqi\',' + i + ',\'status\',this.value)">' + stOpt(r.status) + '</select></td><td><button class="icon-btn del" onclick="window.kurDelRow(\'evaluasi.cqi\',' + i + ')"><i class="fa-solid fa-trash"></i></button></td></tr>').join('');
@@ -1460,8 +1573,8 @@
                 '<div style="flex:1;min-width:130px;background:var(--bg-main);border:1px solid var(--border-color);border-radius:10px;padding:10px 12px;"><div style="font-size:.7rem;color:var(--text-muted);">Keterlibatan Dosen (%)</div><input class="inline-input wide" type="number" min="0" max="100" value="' + k.implementasi.partisipasiDosen + '" onchange="window.setKur(\'implementasi\',\'partisipasiDosen\',this.value,true)"></div>' +
                 '<div style="flex:1;min-width:130px;background:var(--bg-main);border:1px solid var(--border-color);border-radius:10px;padding:10px 12px;"><div style="font-size:.7rem;color:var(--text-muted);">Partisipasi MBKM (%)</div><input class="inline-input wide" type="number" min="0" max="100" value="' + k.implementasi.mbkm + '" onchange="window.setKur(\'implementasi\',\'mbkm\',this.value,true)"></div></div>' +
                 '<div style="display:grid;grid-template-columns:1.1fr 1fr;gap:14px;margin-top:12px;align-items:start;">' +
-                '<div><div class="data-card-head" style="margin:0 0 6px;"><h3 style="font-size:.9rem;"><i class="fa-solid fa-chalkboard-user"></i> Metode SCL (bauran)</h3><button class="btn btn-primary" onclick="window.kurAddRow(\'implementasi.scl\')"><i class="fa-solid fa-plus"></i> Metode</button></div>' +
-                '<div class="matrix-table-wrap"><table class="matrix-table"><thead><tr><th>Metode Pembelajaran</th><th style="width:80px;">Porsi %</th><th style="width:50px;">Aksi</th></tr></thead><tbody>' + sclRows + '</tbody></table></div></div>' +
+                '<div><div class="data-card-head" style="margin:0 0 6px;"><h3 style="font-size:.9rem;"><i class="fa-solid fa-chalkboard-user"></i> Metode SCL (bauran) <span style="font-weight:400;font-size:.7rem;color:var(--text-muted);">— otomatis dari metode asesmen MK</span></h3></div>' +
+                '<div class="matrix-table-wrap"><table class="matrix-table"><thead><tr><th>Metode Pembelajaran (SCL)</th><th style="width:90px;">Porsi %</th></tr></thead><tbody>' + sclRows + '</tbody></table></div></div>' +
                 '<div class="chart-container short"><canvas id="sclChart"></canvas></div></div>' + buktiCatatan('implementasi') + '</div>' +
 
                 '<div class="data-card">' + pointHead('materiMetode', '3) Materi &amp; Metode Pembelajaran Mutakhir (relevan EMBA)', 'Bukti materi dan metode pembelajaran mutakhir dan relevan dengan kebutuhan EMBA kini &amp; mendatang, selaras VMTS, untuk mencapai CPL.') +
@@ -1533,7 +1646,7 @@
             }
 
             // ===== MAHASISWA =====
-            function renderStudents() {
+            function renderStudents() { recalcAll(P());
                 const rows = P().students.map(s => '<tr><td style="font-weight:600;">' + esc(s.nim) + '</td><td>' + esc(s.nama) + '</td><td>' + esc(s.prodi) + '</td><td style="font-weight:700;color:' + (s.cplAvg >= 85 ? '#059669' : s.cplAvg >= 75 ? '#c8963e' : '#dc2626') + ';">' + s.cplAvg + '%</td><td><span style="background:' + (s.status === 'Excellent' ? '#ecfdf5' : s.status === 'On Track' ? '#eff6ff' : '#fef2f2') + ';color:' + (s.status === 'Excellent' ? '#065f46' : s.status === 'On Track' ? '#1e5094' : '#dc2626') + ';padding:4px 10px;border-radius:10px;font-weight:600;font-size:0.75rem;">' + esc(s.status) + '</span></td><td>' + esc(s.trend) + '</td></tr>').join('');
                 dashboardContent.innerHTML =
                 '<div class="section-header"><div><h2 class="section-title">👨‍🎓 Monitoring Mahasiswa — ' + esc(P().nama) + '</h2><p class="section-subtitle">Pemantauan capaian CPL individual</p></div><button class="btn btn-ghost" onclick="switchTab(\'data\')"><i class="fa-solid fa-pen"></i> Kelola Data</button></div>' +
@@ -1545,14 +1658,14 @@
             }
 
             // ===== AKREDITASI =====
-            function renderAccreditation() {
+            function renderAccreditation() { recalcAll(P());
                 const ov = overallStatus();
                 const critRows = P().criteria.map(c => { const sc = critScore(c), st = critStatus(c);
-                    const dimRows = c.dimensi.map((d, di) => { const ds = dimStatus(Number(d.kesiapan) || 0); return '<tr style="background:#fbfdfc;"><td style="padding-left:26px;color:#4a5568;">↳ ' + esc(d.nama) + '</td><td><input class="inline-input" type="number" min="0" max="100" value="' + d.kesiapan + '" onchange="window.setDim(' + (c.id - 1) + ',' + di + ',\'kesiapan\',this.value)"></td><td><span class="dim-status ' + ds.c + '">' + ds.t + '</span></td><td><input class="inline-input wide" type="text" value="' + esc(d.bukti) + '" placeholder="Tautan/dokumen bukti" onchange="window.setDim(' + (c.id - 1) + ',' + di + ',\'bukti\',this.value)"></td><td><input class="inline-input wide" type="text" value="' + esc(d.catatan) + '" placeholder="Catatan tindak lanjut" onchange="window.setDim(' + (c.id - 1) + ',' + di + ',\'catatan\',this.value)"></td></tr>'; }).join('');
+                    const dimRows = c.dimensi.map((d, di) => { const ds = dimStatus(Number(d.kesiapan) || 0); let cell; if (d.nama === 'Kurikulum') { cell = '<div style="font-weight:700;color:#059669;">' + d.kesiapan + '%</div><div style="font-size:.7rem;color:var(--text-muted);">otomatis dari modul Kurikulum · <a href="#" onclick="switchTab(\'curriculum\');return false;" style="color:var(--primary);">buka</a></div>'; } else { const ind = d.indikator || []; const okN = ind.filter(x => x.terpenuhi).length; cell = '<div style="font-weight:700;color:#059669;">' + d.kesiapan + '% <span style="font-weight:400;color:var(--text-muted);font-size:.7rem;">(' + okN + '/' + ind.length + ' bukti)</span></div><div style="display:flex;flex-direction:column;gap:1px;margin-top:3px;">' + ind.map((x, ii) => '<label style="font-size:.71rem;display:flex;gap:5px;align-items:flex-start;line-height:1.3;cursor:pointer;"><input type="checkbox" ' + (x.terpenuhi ? 'checked' : '') + ' onchange="window.setIndikator(' + (c.id - 1) + ',' + di + ',' + ii + ')"><span>' + esc(x.teks) + '</span></label>').join('') + '</div>'; } return '<tr style="background:#fbfdfc;"><td style="padding-left:26px;color:#4a5568;vertical-align:top;">↳ ' + esc(d.nama) + '</td><td style="vertical-align:top;min-width:230px;">' + cell + '</td><td style="vertical-align:top;"><span class="dim-status ' + ds.c + '">' + ds.t + '</span></td><td style="vertical-align:top;"><input class="inline-input wide" type="text" value="' + esc(d.bukti) + '" placeholder="Tautan/dokumen bukti" onchange="window.setDim(' + (c.id - 1) + ',' + di + ',\'bukti\',this.value)"></td><td style="vertical-align:top;"><input class="inline-input wide" type="text" value="' + esc(d.catatan) + '" placeholder="Catatan tindak lanjut" onchange="window.setDim(' + (c.id - 1) + ',' + di + ',\'catatan\',this.value)"></td></tr>'; }).join('');
                     return '<tr><td style="font-weight:800;">Kriteria ' + c.id + '</td><td style="font-weight:700;">' + esc(c.nama) + '</td><td style="font-weight:700;color:#059669;">' + sc.toFixed(1) + '</td><td><span class="dim-status ' + st.c + '">' + st.t + '</span></td><td colspan="2"><div class="progress-bar-wrap"><div class="progress-bar-fill ' + (sc >= 85 ? '' : 'gold') + '" style="width:' + Math.min(100, sc) + '%;"></div></div></td></tr>' + dimRows; }).join('');
                 dashboardContent.innerHTML =
                 '<div class="section-header"><div><h2 class="section-title">🏅 Akreditasi LAMEMBA ' + F().tahun + ' — ' + esc(P().nama) + '</h2><p class="section-subtitle">5 Kriteria (Permendiktisaintek 39/2025) — Luaran: Terakreditasi / Tidak Terakreditasi</p></div><div style="text-align:right;"><span class="dim-status ' + ov.c + '" style="font-size:1rem;">' + ov.t + '</span><div style="font-size:0.75rem;color:#718096;margin-top:4px;">Indeks kesiapan: ' + avgKesiapan().toFixed(1) + '%</div></div></div>' +
-                '<div class="data-card" style="background:linear-gradient(135deg,#f0fdf4,#f8fafb);border-color:#d1fae5;"><div style="display:flex;gap:12px;align-items:center;font-size:.85rem;color:#4a5568;"><i class="fa-solid fa-circle-info" style="color:#059669;"></i> Ubah <b>kesiapan</b>, <b>bukti</b>, dan <b>catatan</b> tiap dimensi langsung pada tabel — status & grafik diperbarui seketika & tersimpan otomatis untuk prodi <b>' + esc(P().nama) + '</b>.</div></div>' +
+                '<div class="data-card" style="background:linear-gradient(135deg,#f0fdf4,#f8fafb);border-color:#d1fae5;"><div style="display:flex;gap:12px;align-items:center;font-size:.85rem;color:#4a5568;"><i class="fa-solid fa-circle-info" style="color:#059669;"></i> Centang <b>butir bukti</b> tiap dimensi — <b>kesiapan</b> dihitung otomatis (% bukti terpenuhi); status & grafik diperbarui seketika & tersimpan otomatis untuk prodi <b>' + esc(P().nama) + '</b>.</div></div>' +
                 '<div class="matrix-table-wrap"><table class="matrix-table"><thead><tr><th>Kriteria / Dimensi</th><th>Nama</th><th>Kesiapan</th><th>Status</th><th>Bukti</th><th>Catatan</th></tr></thead><tbody>' + critRows + '</tbody></table></div>' +
                 '<div class="charts-grid" style="margin-top:14px;"><div class="chart-card full-width"><div class="chart-header"><span class="chart-title">📊 Radar 5 Kriteria — ' + esc(P().nama) + '</span></div><div class="chart-container tall"><canvas id="lamembaRadar"></canvas></div></div></div>';
                 const ctx = document.getElementById('lamembaRadar'); if (ctx) allCharts['lamembaRadar'] = new Chart(ctx.getContext('2d'), { type: 'radar', data: { labels: P().criteria.map(c => 'K' + c.id + ': ' + c.nama.split(' ').slice(0, 2).join(' ')), datasets: [{ label: 'Kesiapan ' + P().nama, data: P().criteria.map(c => +critScore(c).toFixed(1)), backgroundColor: 'rgba(16,185,129,0.15)', borderColor: '#10b981', borderWidth: 2.5, pointBackgroundColor: '#059669', pointBorderColor: '#fff', pointBorderWidth: 2, pointRadius: 6, tension: 0.2 }, { label: 'Ambang (' + T() + ')', data: P().criteria.map(() => T()), backgroundColor: 'rgba(200,150,62,0.05)', borderColor: '#c8963e', borderWidth: 1.5, borderDash: [6, 4], pointRadius: 3, pointBackgroundColor: '#c8963e', tension: 0.2 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, padding: 16, font: { size: 11 } } } }, scales: { r: { beginAtZero: false, min: 50, max: 100, ticks: { stepSize: 10, backdropColor: 'transparent' }, grid: { color: '#e5e7eb' }, pointLabels: { font: { size: 9, weight: '700' } } } } } });
@@ -1560,7 +1673,7 @@
             window.setDim = function(ci, di, field, val) { const d = P().criteria[ci].dimensi[di]; d[field] = field === 'kesiapan' ? Math.max(0, Math.min(100, Number(val) || 0)) : val; persist(); destroyAllCharts(); renderAccreditation(); };
 
             // ===== MANAJEMEN DATA =====
-            function renderDataManager() {
+            function renderDataManager() { recalcAll(P());
                 const f = F(), p = P();
                 const facForm = [['pt', 'Perguruan Tinggi'], ['upps', 'Unit Pengelola (Fakultas/UPPS)'], ['kota', 'Kota'], ['tahun', 'Tahun'], ['alamat', 'Alamat'], ['telp', 'Telepon'], ['email', 'E-mail'], ['website', 'Website']]
                     .map(kv => '<div class="form-row"><label>' + kv[1] + '</label><input type="' + (kv[0] === 'tahun' ? 'number' : 'text') + '" value="' + esc(f[kv[0]]) + '" onchange="window.setFaculty(\'' + kv[0] + '\',this.value)"></div>').join('');
@@ -1594,22 +1707,23 @@
             window.setProdi = function(k, v) { P()[k] = ['mahasiswaAktif', 'targetKesiapan'].includes(k) ? (Number(v) || 0) : v; persist(); if (k === 'nama') mountProdiSwitch(); window.showToast('Identitas prodi diperbarui', 'success'); };
 
             const SCHEMA = {
-                cpl: { title: 'CPL', fields: [{ k: 'id', l: 'Kode CPL' }, { k: 'nama', l: 'Deskripsi' }, { k: 'capaian', l: 'Capaian (%)', t: 'number' }] },
+                cpl: { title: 'CPL', fields: [{ k: 'id', l: 'Kode CPL' }, { k: 'nama', l: 'Deskripsi' }] },
                 courses: { title: 'Mata Kuliah', fields: [{ k: 'kode', l: 'Kode MK' }, { k: 'nama', l: 'Nama Mata Kuliah' }, { k: 'sem', l: 'Semester', t: 'number' }, { k: 'sks', l: 'SKS', t: 'number' }, { k: 'tipe', l: 'Tipe', t: 'select', opts: ['Wajib', 'Pilihan', 'Universitas', 'Praktikum', 'Akhir'] }], cplMap: true },
-                students: { title: 'Mahasiswa', fields: [{ k: 'nim', l: 'NIM' }, { k: 'nama', l: 'Nama' }, { k: 'prodi', l: 'Program Studi' }, { k: 'cplAvg', l: 'Rata-rata CPL (%)', t: 'number' }, { k: 'status', l: 'Status', t: 'select', opts: ['Excellent', 'On Track', 'Perlu Perhatian'] }, { k: 'trend', l: 'Tren', t: 'select', opts: ['↑', '→', '↓'] }] }
+                students: { title: 'Mahasiswa', fields: [{ k: 'nim', l: 'NIM' }, { k: 'nama', l: 'Nama' }, { k: 'prodi', l: 'Program Studi' }, { k: 'nilaiLalu', l: 'Rata CPL Semester Lalu (%)', t: 'number' }], nilaiMap: true }
             };
             window.crudEdit = function(ds, i) {
                 const sc = SCHEMA[ds]; const isNew = i < 0; const rec = isNew ? {} : JSON.parse(JSON.stringify(P()[ds][i]));
                 const fields = sc.fields.map(fl => { const val = rec[fl.k] != null ? rec[fl.k] : (fl.k === 'prodi' ? P().nama : ''); if (fl.t === 'select') return '<div class="form-row"><label>' + fl.l + '</label><select data-k="' + fl.k + '">' + fl.opts.map(o => '<option ' + (o == val ? 'selected' : '') + '>' + o + '</option>').join('') + '</select></div>'; return '<div class="form-row"><label>' + fl.l + '</label><input type="' + (fl.t || 'text') + '" data-k="' + fl.k + '" value="' + esc(val) + '"></div>'; }).join('');
                 let cplMap = ''; if (sc.cplMap) { const arr = rec.cpl || []; cplMap = '<div class="form-row"><label>CPL yang Didukung</label><div class="chk-grid">' + P().cpl.map((c, j) => '<label><input type="checkbox" data-cpl="' + j + '" ' + (arr[j] ? 'checked' : '') + '> ' + c.id + '</label>').join('') + '</div></div>'; }
+                let nilaiMap = ''; if (sc.nilaiMap) { const arr = rec.nilai || []; nilaiMap = '<div class="form-row"><label>Nilai Capaian per CPL (0–100) — rata-rata, status & tren dihitung otomatis</label><div class="chk-grid">' + P().cpl.map((c, j) => '<label style="display:flex;flex-direction:column;font-size:.72rem;gap:2px;">' + c.id + '<input type="number" min="0" max="100" data-nilai="' + j + '" value="' + (arr[j] != null ? arr[j] : '') + '" style="width:66px;"></label>').join('') + '</div></div>'; }
                 modalCtx = { ds, i };
-                openModal('<h3>' + (isNew ? 'Tambah' : 'Edit') + ' ' + sc.title + '</h3><div class="msub">Prodi: <b>' + esc(P().nama) + '</b> — tersimpan otomatis.</div>' + fields + cplMap + '<div class="modal-actions"><button class="btn btn-ghost" onclick="window.closeModal()">Batal</button><button class="btn btn-primary" onclick="window.crudSave()"><i class="fa-solid fa-check"></i> Simpan</button></div>');
+                openModal('<h3>' + (isNew ? 'Tambah' : 'Edit') + ' ' + sc.title + '</h3><div class="msub">Prodi: <b>' + esc(P().nama) + '</b> — tersimpan otomatis.</div>' + fields + cplMap + nilaiMap + '<div class="modal-actions"><button class="btn btn-ghost" onclick="window.closeModal()">Batal</button><button class="btn btn-primary" onclick="window.crudSave()"><i class="fa-solid fa-check"></i> Simpan</button></div>');
             };
             window.crudSave = function() {
                 const ds = modalCtx.ds, i = modalCtx.i; const sc = SCHEMA[ds]; const box = document.getElementById('modalBox');
                 const rec = (i < 0) ? {} : JSON.parse(JSON.stringify(P()[ds][i]));
                 box.querySelectorAll('[data-k]').forEach(el => { const k = el.getAttribute('data-k'); const fl = sc.fields.find(x => x.k === k); rec[k] = fl && fl.t === 'number' ? (Number(el.value) || 0) : el.value; });
-                if (sc.cplMap) { const arr = P().cpl.map(() => 0); box.querySelectorAll('[data-cpl]').forEach(el => { if (el.checked) arr[Number(el.getAttribute('data-cpl'))] = 1; }); rec.cpl = arr; }
+                if (sc.cplMap) { const arr = P().cpl.map(() => 0); box.querySelectorAll('[data-cpl]').forEach(el => { if (el.checked) arr[Number(el.getAttribute('data-cpl'))] = 1; }); rec.cpl = arr; } if (sc.nilaiMap) { const arr = P().cpl.map(() => 0); box.querySelectorAll('[data-nilai]').forEach(el => { arr[Number(el.getAttribute('data-nilai'))] = Number(el.value) || 0; }); rec.nilai = arr; }
                 if (i < 0) P()[ds].push(rec); else P()[ds][i] = rec;
                 persist(); window.closeModal(); window.showToast('✅ Tersimpan', 'success'); destroyAllCharts(); renderDataManager();
             };
@@ -1659,7 +1773,7 @@
                 '<div class="data-card"><div class="data-card-head"><h3><i class="fa-solid fa-eye"></i> Pratinjau Laporan — ' + esc(P().nama) + '</h3><span class="header-badge" style="font-size:.72rem;">' + F().tahun + '</span></div><div class="report-preview">' + buildReportHTML() + '</div></div>';
             }
             function facultyRekapRows() { return STORE.prodi.map(p => { const ov = overallStatusOf(p); return '<tr><td style="text-align:center;">' + esc(p.kode) + '</td><td>' + esc(p.nama) + '</td><td style="text-align:center;">' + avgKesiapanOf(p).toFixed(1) + '%</td><td style="text-align:center;">' + ov.t + '</td><td style="text-align:center;">' + p.courses.length + '</td><td style="text-align:center;">' + Number(p.mahasiswaAktif).toLocaleString('id-ID') + '</td></tr>'; }).join(''); }
-            function buildReportHTML() {
+            function buildReportHTML() { recalcAll(P());
                 const m = M(), p = P(), ov = overallStatus(), now = new Date();
                 const critBlocks = p.criteria.map(c => { const sc = critScore(c), st = critStatus(c); const dims = c.dimensi.map(d => { const ds = dimStatus(Number(d.kesiapan) || 0); return '<tr><td>' + esc(d.nama) + '</td><td style="text-align:center;">' + d.kesiapan + '%</td><td>' + ds.t + '</td><td>' + (esc(d.bukti) || '-') + '</td><td>' + (esc(d.catatan) || '-') + '</td></tr>'; }).join(''); return '<h3>Kriteria ' + c.id + '. ' + esc(c.nama) + ' <span style="font-weight:400;font-size:.85em;">— kesiapan ' + sc.toFixed(1) + '%, status: <b>' + st.t + '</b></span></h3><table><thead><tr><th>Dimensi</th><th>Kesiapan</th><th>Status</th><th>Bukti/Dokumen</th><th>Catatan Tindak Lanjut</th></tr></thead><tbody>' + dims + '</tbody></table>'; }).join('');
                 const rekap = p.criteria.map(c => { const st = critStatus(c); return '<tr><td style="text-align:center;">' + c.id + '</td><td>' + esc(c.nama) + '</td><td style="text-align:center;">' + c.dimensi.length + '</td><td style="text-align:center;">' + critScore(c).toFixed(1) + '%</td><td style="text-align:center;">' + st.t + '</td></tr>'; }).join('');
@@ -1680,7 +1794,7 @@
             }
             window.printReport = function() { const w = window.open('', '_blank'); if (!w) { window.showToast('⚠️ Izinkan pop-up untuk mencetak', 'error'); return; } w.document.write('<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8"><title>Laporan Akreditasi — ' + esc(P().nama) + '</title><style>body{font-family:Calibri,Arial,sans-serif;color:#1a1f1c;margin:28px;line-height:1.5;font-size:12px}h2{font-size:15px;margin-top:22px}h3{font-size:13px;margin-top:16px;color:#0f4d32}table{width:100%;border-collapse:collapse;margin:8px 0;font-size:11px}th,td{border:1px solid #999;padding:5px 7px;text-align:left;vertical-align:top}th{background:#0f4d32;color:#fff}@media print{h2,h3{page-break-after:avoid}tr{page-break-inside:avoid}}</style></head><body>' + buildReportHTML() + '</body></html>'); w.document.close(); setTimeout(() => { w.focus(); w.print(); }, 400); window.showToast('🖨️ Menyiapkan cetak/PDF…', 'info'); };
             window.exportWord = function() { const html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>Laporan</title><style>@page{size:A4;margin:2cm}body{font-family:Calibri,Arial,sans-serif;font-size:11pt;line-height:1.5}h2{font-size:14pt;color:#0f4d32}h3{font-size:12pt;color:#0f4d32}table{width:100%;border-collapse:collapse;margin:8px 0;font-size:10pt}th,td{border:1px solid #888;padding:5px 7px;text-align:left}th{background:#0f4d32;color:#fff}</style></head><body>' + buildReportHTML() + '</body></html>'; dl(new Blob(['\ufeff' + html], { type: 'application/msword' }), 'Laporan-Akreditasi-' + slug(P().nama) + '.doc'); window.showToast('📝 Word (.doc) diunduh', 'success'); };
-            window.exportExcel = function() {
+            window.exportExcel = function() { STORE.prodi.forEach(p => recalcAll(p));
                 if (typeof XLSX === 'undefined') { window.showToast('⚠️ Pustaka Excel belum termuat', 'error'); return; }
                 const border = { top: { style: 'thin', color: { rgb: 'BBBBBB' } }, bottom: { style: 'thin', color: { rgb: 'BBBBBB' } }, left: { style: 'thin', color: { rgb: 'BBBBBB' } }, right: { style: 'thin', color: { rgb: 'BBBBBB' } } };
                 const H = { fill: { fgColor: { rgb: '0F4D32' } }, font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 10, name: 'Arial' }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border };
@@ -1730,7 +1844,7 @@
 
             // ===== TAB KESELARASAN KONSTRUKTIF =====
             function renderAlignment() {
-                const p = P(); normAlign(p);
+                const p = P(); normAlign(p); ensureSoal(p);
                 const V = alignVertical(p), H = alignHorizontal(p), g = alignGaps(p), score = Math.round((V.score + H.score) / 2), st = dimStatus(score);
                 const chainItem = (lbl, okPct) => { const col = okPct >= 90 ? '#10b981' : okPct >= 70 ? '#f59e0b' : '#ef4444'; return '<div style="flex:1;min-width:96px;text-align:center;"><div style="background:' + col + ';color:#fff;border-radius:10px;padding:8px 6px;font-weight:700;font-size:.74rem;">' + lbl + '</div><div style="font-size:.72rem;color:var(--text-muted);margin-top:3px;">' + okPct + '%</div></div>'; };
                 const pct = (a, b) => b ? Math.round(a / b * 100) : 100;
@@ -1766,7 +1880,7 @@
                         '<div class="matrix-table-wrap"><table class="matrix-table"><thead><tr><th>Metode</th><th>Bobot%</th><th>Ujian</th><th>Mengukur CPMK</th><th style="text-align:center;">Kapab. Bloom</th><th></th></tr></thead><tbody>' + asRows + '</tbody></table></div>' +
                         '<div class="data-card-head" style="margin:10px 0 4px;"><h3 style="font-size:.85rem;"><i class="fa-solid fa-file-pen"></i> Kisi-Kisi Butir Soal UTS/UAS (selaras Bloom)</h3><div style="display:flex;gap:6px;"><button class="btn btn-ghost" onclick="window.exportKisiExcel(' + ci + ')"><i class="fa-solid fa-file-excel"></i> Excel</button><button class="btn btn-ghost" onclick="window.exportKisiWord(' + ci + ')"><i class="fa-solid fa-file-word"></i> Word</button><button class="btn btn-ghost" onclick="window.printKisi(' + ci + ')"><i class="fa-solid fa-print"></i></button></div></div>' +
                         '<div class="matrix-table-wrap"><table class="matrix-table"><thead><tr><th style="text-align:center;">Ujian</th><th>CPMK</th><th style="text-align:center;">Bloom</th><th>Bentuk Soal</th><th style="text-align:center;">∑ Butir</th><th style="text-align:center;">Bobot</th></tr></thead><tbody>' + bpRows + '</tbody></table></div>' +
-                        '</div></div></div>';
+                        soalSectionHTML(c, ci) + '</div></div></div>';
                 }).join('');
 
                 dashboardContent.innerHTML =
@@ -1791,13 +1905,13 @@
             window.delAsesmen = function(ci, ai) { P().courses[ci].asesmen.splice(ai, 1); persist(); destroyAllCharts(); renderAlignment(); };
             window.toggleAsesCpmk = function(ci, ai, ki) { const a = P().courses[ci].asesmen[ai]; const i = (a.cpmk || []).indexOf(ki); if (i >= 0) a.cpmk.splice(i, 1); else { a.cpmk = a.cpmk || []; a.cpmk.push(ki); } persist(); destroyAllCharts(); renderAlignment(); };
 
-            STORE.prodi.forEach(p => { normAlign(p); syncKur(p); }); persist();
+            STORE.prodi.forEach(p => { normAlign(p); normData(p); recalcAll(p); }); persist();
             mountProdiSwitch();
             renderDashboard();
             setInterval(() => { if (document.getElementById('modalOverlay').classList.contains('show')) return; if (['data', 'report', 'accreditation'].includes(currentTab)) return; destroyAllCharts(); renderTabContent(currentTab); }, 45000);
             window.addEventListener('resize', () => { if (window.innerWidth > 768) { overlay.classList.remove('show'); if (!sidebar.classList.contains('collapsed') && !sidebar.classList.contains('mobile-open')) mainContent.style.marginLeft = '260px'; } else { if (!sidebar.classList.contains('mobile-open')) mainContent.style.marginLeft = '0px'; } });
             if (window.innerWidth <= 768) { mainContent.style.marginLeft = '0px'; sidebar.classList.remove('collapsed'); }
             console.log('✅ Dashboard OBE FEBI UINSI — Multi-Prodi (3) · LAMEMBA 2026 Ready');
-        })();        </script>
+        })();                        </script>
 </body>
 </html>
