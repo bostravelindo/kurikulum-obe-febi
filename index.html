@@ -11,6 +11,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js">
     </script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/docx@9.7.1/dist/index.iife.js"></script>
     <style>
         :root {
             --primary-dark: #0a2e1f;
@@ -1030,6 +1031,9 @@
 
 
 
+
+
+
         (function() {
             'use strict';
             let currentTab = 'dashboard';
@@ -1468,6 +1472,137 @@
             window.cqiSetKKM = function(v) { const x = Number(v); cqiKKM = isFinite(x) ? Math.max(0, Math.min(100, x)) : 75; destroyAllCharts(); renderAccreditation(); };
             window.exportCqiWord = function() { const p = P(); ensureGradebook(p); recalcAll(p); const html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>CQI ' + esc(p.kode) + '</title><style>@page{size:A4 landscape;margin:1.6cm}body{font-family:Calibri,Arial,sans-serif;font-size:10pt;line-height:1.45}h2{font-size:14pt;color:#0f4d32}h3{font-size:11.5pt;color:#0f4d32;margin:12px 0 4px}table{width:100%;border-collapse:collapse;margin:6px 0;font-size:8.5pt}th,td{border:1px solid #888;padding:4px 6px;text-align:left;vertical-align:top}th{background:#0f4d32;color:#fff}</style></head><body>' + cqiDocHTML(p) + '</body></html>'; dl(new Blob(['\ufeff' + html], { type: 'application/msword' }), 'CQI-PPEPP-' + slug(p.nama) + '.doc'); window.showToast('📝 Laporan CQI/PPEPP (Word) diunduh', 'success'); };
             window.exportCqiExcel = function() { if (typeof XLSX === 'undefined') { window.showToast('⚠️ Pustaka Excel belum termuat', 'error'); return; } const p = P(); ensureGradebook(p); recalcAll(p); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, xlKisiSheet(cqiAoa(p)), 'CQI-PPEPP'); XLSX.writeFile(wb, 'CQI-PPEPP-' + slug(p.nama) + '.xlsx'); window.showToast('📊 Laporan CQI/PPEPP (Excel) diunduh', 'success'); };
+            // ===== RPS PLUS: generator lengkap, panel mutu, impor/ekspor template =====
+            function rpsMetodeFor(bloom, idx) { const hi = ['Case Method', 'Problem/Project-Based Learning', 'Collaborative Learning']; const mid = ['Small Group Discussion', 'Praktik & Latihan Terbimbing', 'Presentasi & Diskusi']; const lo = ['Ceramah & Diskusi', 'Collaborative Learning', 'Small Group Discussion']; const pool = bloom >= 4 ? hi : bloom >= 3 ? mid : lo; return pool[idx % pool.length]; }
+            function rpsSeedMingguPro(c) {
+                const r = c.rps, A = c.asesmen || [];
+                const utsW = A.filter(a => a.ujian === 'UTS').reduce((s, a) => s + (Number(a.bobot) || 0), 0);
+                const uasW = A.filter(a => a.ujian === 'UAS').reduce((s, a) => s + (Number(a.bobot) || 0), 0);
+                const subs = r.subcpmk || [], subN = subs.length || 1;
+                const content = [1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15];
+                const remain = Math.max(0, 100 - Math.round(utsW) - Math.round(uasW));
+                const per = remain / content.length; const minggu = [];
+                for (let w = 1; w <= 16; w++) {
+                    if (w === 8) { minggu.push({ sub: [], indikator: 'Mampu menyelesaikan asesmen tengah semester sesuai Sub-CPMK pertemuan 1–7', penilaian: 'Ujian Tengah Semester (mengacu kisi-kisi & rubrik analitik)', metode: 'Ujian Tertulis', materi: 'Reviu & evaluasi capaian materi pertemuan 1–7', mode: 'Luring', bobot: Math.round(utsW), uts: true }); continue; }
+                    if (w === 16) { minggu.push({ sub: [], indikator: 'Mampu menyelesaikan asesmen akhir semester sesuai Sub-CPMK pertemuan 9–15', penilaian: 'Ujian Akhir Semester (mengacu kisi-kisi & rubrik analitik)', metode: 'Ujian Tertulis', materi: 'Reviu & evaluasi capaian materi pertemuan 9–15', mode: 'Luring', bobot: Math.round(uasW), uas: true }); continue; }
+                    const ci = content.indexOf(w), si = ci % subN, sub = subs[si] || {}, bloom = sub.bloom || 2;
+                    minggu.push({ sub: [si], indikator: 'Ketepatan & kedalaman dalam ' + String(sub.deskripsi || 'capaian pembelajaran terkait').toLowerCase(), penilaian: rpsPenilaian(bloom), metode: rpsMetodeFor(bloom, ci), materi: 'Bahan kajian: ' + (sub.deskripsi || '-'), mode: (ci % 3 === 2 ? 'Bauran' : 'Luring'), bobot: Math.round(per) });
+                }
+                let sum = minggu.reduce((s, m) => s + m.bobot, 0); const idx = minggu.findIndex(m => !m.uts && !m.uas); if (idx >= 0) minggu[idx].bobot += (100 - sum);
+                return minggu;
+            }
+            function rpsAutoComplete(c) {
+                const p = P(), r = c.rps;
+                if (!r.deskripsi || r.deskripsi.trim().length < 25) { const mapped = c.cpl.map((v, j) => v ? (p.cpl[j] && p.cpl[j].nama) : null).filter(Boolean); r.deskripsi = 'Mata kuliah ' + c.nama + ' (' + c.sks + ' SKS, semester ' + c.sem + ') membekali mahasiswa dengan kompetensi ' + (mapped.slice(0, 3).join('; ') || 'sesuai capaian pembelajaran lulusan') + '. Pembelajaran dirancang berbasis Outcome-Based Education dengan keselarasan CPL → CPMK → Sub-CPMK → asesmen.'; }
+                if (!Array.isArray(r.subcpmk)) r.subcpmk = [];
+                (c.cpmk || []).forEach((m, ki) => { if (!r.subcpmk.some(s => s.cpmkIdx === ki)) r.subcpmk.push({ kode: 'Sub-' + m.kode, deskripsi: m.deskripsi, cpmkIdx: ki, bloom: m.bloom }); });
+                r.subcpmk.forEach((s, i) => { if (!s.kode) s.kode = 'Sub-CPMK-' + (i + 1); s.bloom = Math.min(6, Math.max(1, Number(s.bloom) || 2)); if (typeof s.cpmkIdx !== 'number' || s.cpmkIdx >= (c.cpmk || []).length) s.cpmkIdx = 0; if (!s.deskripsi) s.deskripsi = (c.cpmk[s.cpmkIdx] || {}).deskripsi || 'Rumusan Sub-CPMK'; });
+                r.minggu = rpsSeedMingguPro(c);
+                if (!Array.isArray(r.pustakaUtama) || !r.pustakaUtama.length) r.pustakaUtama = ['(Lengkapi referensi utama mata kuliah)'];
+                if (!Array.isArray(r.pustakaPendukung) || !r.pustakaPendukung.length) r.pustakaPendukung = ['(Lengkapi referensi pendukung)'];
+                rpsBalance(c); return r;
+            }
+            function rpsAlign(c) {
+                const r = c.rps || {}, cpmk = c.cpmk || [], subs = r.subcpmk || [], MG = r.minggu || []; const content = MG.filter(m => !m.uts && !m.uas);
+                const checks = [
+                    { l: 'CPL dibebankan pada MK', ok: c.cpl.some(v => v) },
+                    { l: 'Setiap CPMK memiliki ≥1 Sub-CPMK', ok: cpmk.length > 0 && cpmk.every((m, ki) => subs.some(s => s.cpmkIdx === ki)) },
+                    { l: 'Setiap Sub-CPMK tertaut ke CPMK', ok: subs.length > 0 && subs.every(s => typeof s.cpmkIdx === 'number' && s.cpmkIdx < cpmk.length) },
+                    { l: 'Setiap minggu konten memuat Sub-CPMK', ok: content.length > 0 && content.every(m => (m.sub || []).length > 0) },
+                    { l: 'Σ bobot penilaian = 100%', ok: MG.length > 0 && Math.round(MG.reduce((s, m) => s + (Number(m.bobot) || 0), 0)) === 100 }
+                ]; const okN = checks.filter(x => x.ok).length; return { pct: Math.round(okN / checks.length * 100), checks: checks, okN: okN, total: checks.length };
+            }
+            function rpsQualityHTML(c) {
+                const comp = rpsCourseComplete(c), al = rpsAlign(c); const ccls = comp.pct >= 80 ? 'st-ok' : comp.pct >= 60 ? 'st-warn' : 'st-bad'; const acls = al.pct >= 80 ? 'st-ok' : al.pct >= 60 ? 'st-warn' : 'st-bad';
+                const li = x => '<div style="display:flex;gap:6px;align-items:flex-start;font-size:.74rem;line-height:1.4;margin-bottom:2px;"><i class="fa-solid fa-' + (x.ok ? 'circle-check" style="color:#059669;' : 'circle-xmark" style="color:#dc2626;') + 'margin-top:2px;"></i><span>' + esc(x.l) + '</span></div>';
+                return '<div class="data-card" style="background:linear-gradient(135deg,#f0fdf4,#f8fafb);border-color:#d1fae5;"><div class="data-card-head"><h3><i class="fa-solid fa-clipboard-check"></i> Mutu RPS — Kelengkapan &amp; Keselarasan</h3><div style="display:flex;gap:6px;"><span class="dim-status ' + acls + '" style="font-size:.8rem;">Selaras ' + al.pct + '%</span><span class="dim-status ' + ccls + '" style="font-size:.8rem;">Lengkap ' + comp.pct + '%</span></div></div>' +
+                    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">' +
+                    '<div><div style="font-weight:700;font-size:.78rem;color:#0f4d32;margin-bottom:4px;">Keselarasan Vertikal (OBE)</div>' + al.checks.map(li).join('') + '</div>' +
+                    '<div><div style="font-weight:700;font-size:.78rem;color:#0f4d32;margin-bottom:4px;">Kelengkapan Dokumen</div>' + comp.checks.map(li).join('') + '</div></div>' +
+                    ((al.pct < 100 || comp.pct < 100) ? '<div style="margin-top:8px;font-size:.74rem;color:#4a5568;"><i class="fa-solid fa-lightbulb" style="color:#c8963e;"></i> Klik <b>Lengkapi &amp; Selaraskan (OBE)</b> untuk menyusun RPS otomatis yang utuh & selaras tinggi.</div>' : '<div style="margin-top:8px;font-size:.74rem;color:#059669;"><i class="fa-solid fa-circle-check"></i> RPS lengkap & selaras 100% — siap dijadikan laporan akademik.</div>') + '</div>';
+            }
+            function rpsExportObj(c) { return { _petunjuk: 'Template RPS Dashboard OBE FEBI UINSI. Edit nilai di dalam "rps" lalu impor kembali via tombol "Impor (JSON)". Field minggu: array 16 objek {sub:[indeks Sub-CPMK], indikator, penilaian, metode, materi, mode, bobot}. Jangan ubah struktur kunci.', meta: { prodi: P().nama, kode: c.kode, nama: c.nama, sks: c.sks, sem: c.sem }, rps: JSON.parse(JSON.stringify(c.rps || {})) }; }
+            function rpsApplyImport(ci, data) {
+                const c = P().courses[ci]; const src = (data && data.rps) ? data.rps : data; if (!src || typeof src !== 'object') throw new Error('struktur "rps" tidak ditemukan');
+                const r = c.rps || (c.rps = {});
+                ['deskripsi', 'prasyarat', 'dosenPengembang', 'koordinator', 'kaprodi'].forEach(k => { if (typeof src[k] === 'string') r[k] = src[k]; });
+                ['pustakaUtama', 'pustakaPendukung'].forEach(k => { if (Array.isArray(src[k])) r[k] = src[k].map(x => String(x)).slice(0, 40); });
+                if (Array.isArray(src.subcpmk)) r.subcpmk = src.subcpmk.slice(0, 30).map((s, i) => ({ kode: String(s.kode || ('Sub-CPMK-' + (i + 1))), deskripsi: String(s.deskripsi || ''), cpmkIdx: Math.max(0, Math.min((c.cpmk || []).length - 1, Number(s.cpmkIdx) || 0)), bloom: Math.min(6, Math.max(1, Number(s.bloom) || 2)) }));
+                if (Array.isArray(src.minggu) && src.minggu.length === 16) r.minggu = src.minggu.map(m => ({ sub: Array.isArray(m.sub) ? m.sub.map(Number).filter(x => x >= 0) : [], indikator: String(m.indikator || ''), penilaian: String(m.penilaian || ''), metode: String(m.metode || ''), materi: String(m.materi || ''), mode: String(m.mode || 'Luring'), bobot: Math.max(0, Math.min(100, Number(m.bobot) || 0)), uts: !!m.uts, uas: !!m.uas }));
+                normRPS(P()); persist(); destroyAllCharts(); renderRPS();
+            }
+            window.rpsAutoComplete = function(ci) { rpsAutoComplete(P().courses[ci]); persist(); destroyAllCharts(); renderRPS(); window.showToast('✨ RPS disusun otomatis: utuh, lengkap & selaras (OBE)', 'success'); };
+            window.rpsSave = function() { persist(); window.showToast('💾 RPS tersimpan (otomatis & lokal di peramban)', 'success'); };
+            window.exportRpsJSON = function(ci) { const c = P().courses[ci]; dl(new Blob([JSON.stringify(rpsExportObj(c), null, 2)], { type: 'application/json' }), 'Template-RPS-' + slug(c.kode) + '-' + slug(P().nama) + '.json'); window.showToast('⬇️ Template/RPS (JSON) diunduh — dapat diedit & diimpor kembali', 'success'); };
+            window.importRpsJSON = function(ci) { const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.json,application/json'; inp.onchange = function(e) { const f = e.target.files && e.target.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = function() { try { rpsApplyImport(ci, JSON.parse(rd.result)); window.showToast('✅ RPS diimpor & diselaraskan dari berkas', 'success'); } catch (err) { window.showToast('⚠️ Berkas JSON tidak valid: ' + err.message, 'error'); } }; rd.onerror = function() { window.showToast('⚠️ Gagal membaca berkas', 'error'); }; rd.readAsText(f); }; inp.click(); };
+            // ===== RPS: impor dari Excel (format ekspor aplikasi: sheet RPS-<kode>) =====
+            function rpsParseAoa(ci, aoa) {
+                if (!Array.isArray(aoa) || !aoa.length) throw new Error('lembar kosong');
+                const c = P().courses[ci], r = c.rps; const low = s => String(s == null ? '' : s).trim().toLowerCase();
+                aoa.forEach(row => { if (!Array.isArray(row)) return; const k = low(row[0]); if (k.indexOf('prasyarat') >= 0 && row[1] != null && low(row[1]) !== '-' && String(row[1]).trim()) r.prasyarat = String(row[1]).trim(); if (k.indexOf('dosen pengembang') >= 0 && row[1] != null && low(row[1]) !== '-' && String(row[1]).trim()) r.dosenPengembang = String(row[1]).trim(); });
+                let hi = -1; for (let i = 0; i < aoa.length; i++) { const row = aoa[i] || []; if (low(row[0]) === 'mg') { hi = i; break; } }
+                if (hi < 0) throw new Error('tabel mingguan (kolom "Mg") tidak ditemukan');
+                if (!Array.isArray(r.minggu) || r.minggu.length !== 16) r.minggu = rpsSeedMinggu(c);
+                let cnt = 0;
+                for (let i = hi + 1; i < aoa.length; i++) {
+                    const row = aoa[i] || []; const mg = Number(row[0]);
+                    if (!isFinite(mg) || mg < 1 || mg > 16) { if (low(row[6]) === 'total' || low(row[1]) === 'total') break; continue; }
+                    const w = mg - 1; const m = r.minggu[w] || (r.minggu[w] = { sub: [] });
+                    m.indikator = String(row[2] || ''); m.penilaian = String(row[3] || ''); m.metode = String(row[4] || ''); m.materi = String(row[5] || ''); m.mode = String(row[6] || 'Luring'); m.bobot = Math.max(0, Math.min(100, Number(row[7]) || 0)); m.uts = (w === 7); m.uas = (w === 15);
+                    const subTxt = String(row[1] || '').trim();
+                    if (subTxt && low(subTxt) !== 'uts' && low(subTxt) !== 'uas' && subTxt !== '-') { const toks = subTxt.split(',').map(x => x.trim()).filter(Boolean); const idx = []; toks.forEach(t => { const j = (r.subcpmk || []).findIndex(s => low(s.kode) === low(t)); if (j >= 0) idx.push(j); }); if (idx.length) m.sub = idx; }
+                    cnt++;
+                }
+                if (!cnt) throw new Error('tidak ada baris minggu (1–16) terbaca');
+                normRPS(P()); persist(); destroyAllCharts(); renderRPS(); return cnt;
+            }
+            window.importRpsExcel = function(ci) {
+                if (typeof XLSX === 'undefined') { window.showToast('⚠️ Pustaka Excel belum termuat', 'error'); return; }
+                const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.xlsx,.xls';
+                inp.onchange = function(e) { const f = e.target.files && e.target.files[0]; if (!f) return; const rd = new FileReader();
+                    rd.onload = function() { try {
+                        const wb = XLSX.read(rd.result, { type: 'array' }); const c = P().courses[ci]; const want = ('rps-' + c.kode).toLowerCase();
+                        const sn = wb.SheetNames.find(n => n.toLowerCase().trim() === want) || wb.SheetNames.find(n => n.toLowerCase().indexOf('rps') >= 0) || wb.SheetNames[0];
+                        if (!sn) throw new Error('tidak ada sheet');
+                        const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: '' });
+                        const n = rpsParseAoa(ci, aoa); window.showToast('✅ RPS diimpor dari Excel (' + n + ' minggu · sheet "' + sn + '")', 'success');
+                    } catch (err) { window.showToast('⚠️ Gagal impor Excel: ' + err.message, 'error'); } };
+                    rd.onerror = function() { window.showToast('⚠️ Gagal membaca berkas', 'error'); }; rd.readAsArrayBuffer(f); };
+                inp.click();
+            };
+            // ===== RPS: ekspor DOCX OOXML murni (pustaka docx) =====
+            function _dxCell(dx, text, o) { o = o || {}; const none = { style: dx.BorderStyle.NONE, size: 0, color: 'FFFFFF' }; const arr = Array.isArray(text) ? text : [text]; return new dx.TableCell({ width: o.span ? undefined : { size: o.w || 50, type: dx.WidthType.PERCENTAGE }, columnSpan: o.span || undefined, shading: o.shade ? { type: 'clear', color: 'auto', fill: o.shade } : undefined, borders: o.noBorder ? { top: none, bottom: none, left: none, right: none } : undefined, margins: { top: 40, bottom: 40, left: 70, right: 70 }, children: arr.map(t => new dx.Paragraph({ alignment: o.align, children: [new dx.TextRun({ text: String(t == null ? '' : t), bold: !!o.bold, color: o.color, size: o.size || 18 })] })) }); }
+            function _dxH(dx, t) { return new dx.Paragraph({ spacing: { before: 180, after: 60 }, children: [new dx.TextRun({ text: t, bold: true, size: 22, color: '0F4D32' })] }); }
+            function _dxP(dx, t, o) { o = o || {}; return new dx.Paragraph({ alignment: o.align, bullet: o.bullet ? { level: 0 } : undefined, pageBreakBefore: !!o.pageBreakBefore, children: [new dx.TextRun({ text: String(t == null ? '' : t), bold: !!o.bold, size: o.size || 18, color: o.color })] }); }
+            function rpsDocxChildren(c, dx, firstPageBreak) {
+                const f = F(), p = P(), r = c.rps, now = new Date(); const PCT = dx.WidthType.PERCENTAGE, C = dx.AlignmentType.CENTER, RIGHT = dx.AlignmentType.RIGHT;
+                const mapped = c.cpl.map((v, j) => v ? p.cpl[j] : null).filter(Boolean); const ch = [];
+                ch.push(_dxP(dx, 'RENCANA PEMBELAJARAN SEMESTER (RPS)', { align: C, bold: true, size: 28, color: '0F4D32', pageBreakBefore: !!firstPageBreak }));
+                ch.push(_dxP(dx, (f.upps || '') + ' — ' + (f.pt || ''), { align: C, bold: true, size: 20 }));
+                ch.push(_dxP(dx, '', {}));
+                const idData = [['Perguruan Tinggi', f.pt], ['Fakultas/UPPS', f.upps], ['Program Studi', p.nama + ' (' + p.jenjang + ')'], ['Mata Kuliah', c.nama], ['Kode', c.kode], ['Rumpun MK', c.tipe], ['Bobot (SKS)', String(c.sks)], ['Semester', String(c.sem)], ['MK Prasyarat', r.prasyarat || '-'], ['Tanggal Penyusunan', now.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })], ['Dosen Pengembang RPS', r.dosenPengembang || '-'], ['Koordinator RMK', r.koordinator || '-'], ['Ketua Program Studi', r.kaprodi || '-']];
+                ch.push(new dx.Table({ width: { size: 100, type: PCT }, rows: idData.map(x => new dx.TableRow({ children: [_dxCell(dx, x[0], { w: 28, bold: true, shade: 'F0FDF4' }), _dxCell(dx, x[1], { w: 72 })] })) }));
+                ch.push(_dxH(dx, 'Deskripsi Mata Kuliah')); ch.push(_dxP(dx, r.deskripsi || '-'));
+                ch.push(_dxH(dx, 'CPL yang Dibebankan pada MK')); (mapped.length ? mapped : [{ id: '-', nama: '' }]).forEach(cp => ch.push(_dxP(dx, cp.id + ': ' + cp.nama, { bullet: true })));
+                ch.push(_dxH(dx, 'Capaian Pembelajaran Mata Kuliah (CPMK)')); ((c.cpmk || []).length ? c.cpmk : [{ kode: '-', bloom: 2, deskripsi: '' }]).forEach(mm => ch.push(_dxP(dx, mm.kode + ' (' + (BLOOM_SHORT[mm.bloom] || '') + '): ' + mm.deskripsi, { bullet: true })));
+                ch.push(_dxH(dx, 'Sub-CPMK (Kemampuan Akhir Tiap Tahapan Belajar)')); ((r.subcpmk || []).length ? r.subcpmk : [{ kode: '-', bloom: 2, deskripsi: '', cpmkIdx: 0 }]).forEach(s => { const mm = c.cpmk[s.cpmkIdx]; ch.push(_dxP(dx, s.kode + ' (' + (BLOOM_SHORT[s.bloom] || '') + (mm ? ' → ' + mm.kode : '') + '): ' + s.deskripsi, { bullet: true })); });
+                ch.push(_dxH(dx, 'Rencana Pembelajaran Mingguan (16 Minggu)'));
+                const headCols = ['Mg', 'Sub-CPMK', 'Indikator', 'Kriteria & Bentuk Penilaian', 'Metode/Bentuk', 'Materi/Bahan Kajian', 'Mode', 'Bobot'], wcol = [5, 11, 19, 18, 14, 17, 8, 8];
+                const rows = [new dx.TableRow({ tableHeader: true, children: headCols.map((h, i) => _dxCell(dx, h, { w: wcol[i], bold: true, color: 'FFFFFF', shade: '0F4D32', align: C, size: 16 })) })];
+                (r.minggu || []).forEach((mw, i) => { const subTxt = (mw.sub || []).map(si => (r.subcpmk[si] || {}).kode).filter(Boolean).join(', ') || (mw.uts ? 'UTS' : mw.uas ? 'UAS' : '-'); const sh = (mw.uts || mw.uas) ? 'FFF7ED' : undefined; rows.push(new dx.TableRow({ children: [_dxCell(dx, String(i + 1), { w: wcol[0], align: C, shade: sh, size: 16, bold: true }), _dxCell(dx, subTxt, { w: wcol[1], shade: sh, size: 16 }), _dxCell(dx, mw.indikator, { w: wcol[2], shade: sh, size: 16 }), _dxCell(dx, mw.penilaian, { w: wcol[3], shade: sh, size: 16 }), _dxCell(dx, mw.metode, { w: wcol[4], shade: sh, size: 16 }), _dxCell(dx, mw.materi, { w: wcol[5], shade: sh, size: 16 }), _dxCell(dx, mw.mode, { w: wcol[6], align: C, shade: sh, size: 16 }), _dxCell(dx, mw.bobot + '%', { w: wcol[7], align: C, shade: sh, size: 16 })] })); });
+                const totB = (r.minggu || []).reduce((s, x) => s + (Number(x.bobot) || 0), 0);
+                rows.push(new dx.TableRow({ children: [_dxCell(dx, 'Total Bobot Penilaian', { span: 7, bold: true, align: RIGHT, size: 16, shade: 'F8FAFB' }), _dxCell(dx, totB + '%', { w: wcol[7], bold: true, align: C, size: 16, shade: 'F8FAFB' })] }));
+                ch.push(new dx.Table({ width: { size: 100, type: PCT }, rows: rows }));
+                ch.push(_dxH(dx, 'Pustaka Utama')); (r.pustakaUtama && r.pustakaUtama.length ? r.pustakaUtama : ['-']).forEach((x, i) => ch.push(_dxP(dx, (i + 1) + '. ' + x)));
+                ch.push(_dxH(dx, 'Pustaka Pendukung')); (r.pustakaPendukung && r.pustakaPendukung.length ? r.pustakaPendukung : ['-']).forEach((x, i) => ch.push(_dxP(dx, (i + 1) + '. ' + x)));
+                ch.push(_dxP(dx, '', {}));
+                const none = { style: dx.BorderStyle.NONE, size: 0, color: 'FFFFFF' };
+                ch.push(new dx.Table({ width: { size: 100, type: PCT }, borders: { top: none, bottom: none, left: none, right: none, insideHorizontal: none, insideVertical: none }, rows: [new dx.TableRow({ children: [_dxCell(dx, ['Dosen Pengembang RPS', '', '', '', '(' + (r.dosenPengembang || '__________') + ')'], { w: 33, align: C, noBorder: true }), _dxCell(dx, ['Koordinator RMK', '', '', '', '(' + (r.koordinator || '__________') + ')'], { w: 34, align: C, noBorder: true }), _dxCell(dx, [(f.kota || '') + ', ' + (f.tahun || ''), 'Ketua Program Studi', '', '', '(' + (r.kaprodi || '__________') + ')'], { w: 33, align: C, noBorder: true })] })] }));
+                return ch;
+            }
+            function rpsDocxDocument(courses, dx) { const kids = []; courses.forEach((c, i) => rpsDocxChildren(c, dx, i > 0).forEach(k => kids.push(k))); return new dx.Document({ creator: 'Dashboard OBE FEBI UINSI', title: 'RPS', sections: [{ properties: { page: { size: { orientation: dx.PageOrientation.LANDSCAPE }, margin: { top: 900, bottom: 900, left: 900, right: 900 } } }, children: kids }] }); }
+            window.exportRpsDocx = function(ci) { const dx = window.docx; if (!dx) { window.showToast('⚠️ Pustaka DOCX belum termuat (perlu koneksi internet)', 'error'); return; } try { const c = P().courses[ci]; const doc = rpsDocxDocument([c], dx); dx.Packer.toBlob(doc).then(function(b) { dl(b, 'RPS-' + slug(c.kode) + '-' + slug(P().nama) + '.docx'); window.showToast('📄 RPS ' + c.kode + ' (DOCX asli) diunduh', 'success'); }).catch(function(e) { window.showToast('⚠️ Gagal membuat DOCX: ' + e.message, 'error'); }); } catch (e) { window.showToast('⚠️ Gagal: ' + e.message, 'error'); } };
+            window.exportRpsAllDocx = function() { const dx = window.docx; if (!dx) { window.showToast('⚠️ Pustaka DOCX belum termuat (perlu koneksi internet)', 'error'); return; } try { const p = P(); const doc = rpsDocxDocument(p.courses, dx); dx.Packer.toBlob(doc).then(function(b) { dl(b, 'RPS-Semua-MK-' + slug(p.nama) + '.docx'); window.showToast('📄 Semua RPS (' + p.courses.length + ' MK · DOCX asli) diunduh', 'success'); }).catch(function(e) { window.showToast('⚠️ Gagal membuat DOCX: ' + e.message, 'error'); }); } catch (e) { window.showToast('⚠️ Gagal: ' + e.message, 'error'); } };
             function defaultStore() {
                 return {
                     faculty: { pt: 'UIN Sultan Aji Muhammad Idris Samarinda', upps: 'Fakultas Ekonomi dan Bisnis Islam (FEBI)', kota: 'Samarinda', tahun: 2026, alamat: 'Jl. H.A.M. Rifaddin, Samarinda Seberang', telp: '(0541) 7777777', email: 'febi@uinsi.ac.id', website: 'febi.uinsi.ac.id' },
@@ -2095,8 +2230,8 @@
                 dashboardContent.innerHTML =
                     '<div class="section-header"><div><h2 class="section-title">📘 Rencana Pembelajaran Semester (RPS)</h2><p class="section-subtitle">Turunan kurikulum & selaras: CPL → CPMK → Sub-CPMK → Rencana Mingguan → Penilaian — ' + esc(p.nama) + '</p></div><div style="text-align:right;"><span class="dim-status ' + (balBad ? 'st-bad' : 'st-ok') + '">Σ Bobot ' + Math.round(totB) + '%</span></div></div>' +
                     '<div class="data-card"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:space-between;"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><label style="font-weight:600;font-size:.85rem;">Mata Kuliah:</label><select class="inline-input" style="min-width:280px;" onchange="window.rpsSelect(this.value)">' + opts + '</select></div>' +
-                    '<div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn btn-ghost" onclick="window.rpsRegen(' + rpsSel + ')"><i class="fa-solid fa-rotate"></i> Regenerasi Mingguan</button><button class="btn btn-ghost" onclick="window.rpsBalance(' + rpsSel + ')"><i class="fa-solid fa-scale-balanced"></i> Seimbangkan Bobot</button><button class="btn btn-ghost" onclick="window.exportRpsExcel(' + rpsSel + ')"><i class="fa-solid fa-file-excel"></i> Excel</button><button class="btn btn-ghost" onclick="window.exportRpsWord(' + rpsSel + ')"><i class="fa-solid fa-file-word"></i> Word</button><button class="btn btn-ghost" onclick="window.exportRpsAllExcel()"><i class="fa-solid fa-layer-group"></i> Semua (Excel)</button><button class="btn btn-ghost" onclick="window.exportRpsAllWord()"><i class="fa-solid fa-folder-open"></i> Semua (Word)</button><button class="btn btn-primary" onclick="window.printRps(' + rpsSel + ')"><i class="fa-solid fa-print"></i> PDF</button></div></div></div>' +
-                    '<div class="data-card"><div class="data-card-head"><h3><i class="fa-solid fa-id-card"></i> Identitas & Deskripsi</h3><span class="header-badge" style="font-size:.7rem;">' + esc(c.kode) + ' · ' + c.sks + ' SKS · Sem ' + c.sem + '</span></div>' +
+                    '<div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn btn-primary" onclick="window.rpsAutoComplete(' + rpsSel + ')"><i class="fa-solid fa-wand-magic-sparkles"></i> Lengkapi &amp; Selaraskan</button><button class="btn btn-ghost" onclick="window.rpsRegen(' + rpsSel + ')"><i class="fa-solid fa-rotate"></i> Regenerasi Mingguan</button><button class="btn btn-ghost" onclick="window.rpsBalance(' + rpsSel + ')"><i class="fa-solid fa-scale-balanced"></i> Seimbangkan Bobot</button><button class="btn btn-ghost" onclick="window.exportRpsExcel(' + rpsSel + ')"><i class="fa-solid fa-file-excel"></i> Excel</button><button class="btn btn-ghost" onclick="window.exportRpsWord(' + rpsSel + ')"><i class="fa-solid fa-file-word"></i> Word</button><button class="btn btn-ghost" onclick="window.exportRpsDocx(' + rpsSel + ')"><i class="fa-solid fa-file-word"></i> DOCX asli</button><button class="btn btn-ghost" onclick="window.exportRpsAllExcel()"><i class="fa-solid fa-layer-group"></i> Semua (Excel)</button><button class="btn btn-ghost" onclick="window.exportRpsAllWord()"><i class="fa-solid fa-folder-open"></i> Semua (Word)</button><button class="btn btn-ghost" onclick="window.exportRpsAllDocx()"><i class="fa-solid fa-folder-open"></i> Semua (DOCX)</button><button class="btn btn-primary" onclick="window.printRps(' + rpsSel + ')"><i class="fa-solid fa-print"></i> PDF</button><button class="btn btn-ghost" onclick="window.importRpsJSON(' + rpsSel + ')"><i class="fa-solid fa-file-import"></i> Impor (JSON)</button><button class="btn btn-ghost" onclick="window.importRpsExcel(' + rpsSel + ')"><i class="fa-solid fa-file-excel"></i> Impor (Excel)</button><button class="btn btn-ghost" onclick="window.exportRpsJSON(' + rpsSel + ')"><i class="fa-solid fa-file-export"></i> Template/Ekspor (JSON)</button><button class="btn btn-ghost" onclick="window.rpsSave()"><i class="fa-solid fa-floppy-disk"></i> Simpan</button></div></div></div>' +
+                    rpsQualityHTML(c) + '<div class="data-card"><div class="data-card-head"><h3><i class="fa-solid fa-id-card"></i> Identitas & Deskripsi</h3><span class="header-badge" style="font-size:.7rem;">' + esc(c.kode) + ' · ' + c.sks + ' SKS · Sem ' + c.sem + '</span></div>' +
                     '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:.8rem;"><label>Dosen Pengembang RPS' + fld('dosenPengembang', r.dosenPengembang, 'Nama & gelar') + '</label><label>Koordinator RMK' + fld('koordinator', r.koordinator, 'Nama & gelar') + '</label><label>Ketua Program Studi' + fld('kaprodi', r.kaprodi, 'Nama & gelar') + '</label></div>' +
                     '<label style="font-size:.8rem;display:block;margin-top:8px;">MK Prasyarat' + fld('prasyarat', r.prasyarat, 'Mis. Pengantar Ekonomi') + '</label>' +
                     '<label style="font-size:.8rem;display:block;margin-top:8px;">Deskripsi Singkat MK<textarea class="inline-input wide" style="min-height:54px;" onchange="window.rpsField(' + rpsSel + ',\'deskripsi\',this.value)">' + esc(r.deskripsi) + '</textarea></label></div>' +
@@ -2177,6 +2312,6 @@
             window.addEventListener('resize', () => { if (window.innerWidth > 768) { overlay.classList.remove('show'); if (!sidebar.classList.contains('collapsed') && !sidebar.classList.contains('mobile-open')) mainContent.style.marginLeft = '260px'; } else { if (!sidebar.classList.contains('mobile-open')) mainContent.style.marginLeft = '0px'; } });
             if (window.innerWidth <= 768) { mainContent.style.marginLeft = '0px'; sidebar.classList.remove('collapsed'); }
             console.log('✅ Dashboard OBE FEBI UINSI — Multi-Prodi (3) · LAMEMBA 2026 Ready');
-        })();                                            </script>
+        })();                                                        </script>
 </body>
 </html>
